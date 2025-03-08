@@ -33,6 +33,10 @@ Next we will try to match what we already own against the file list we receive f
 
 For now (maybe change in the future) it will become an option to change the ratio, but I found 50% to work the best because of all the weird filenames everyone uses
 
+For the matching to work it will expect the following filesystem structure, MusicLibrary/ArtistName/
+
+Only the ArtistName folder is critical to prevent reading thousands of files/folders
+
 ## Filename Patterns
 | Description  | Pattern |
 | ------------- | ------------- |
