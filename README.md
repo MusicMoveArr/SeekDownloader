@@ -1,6 +1,7 @@
 # SeekDownloader
 
 A simple to use, commandline tool, for downloading from the SoulSeek network
+
 When selecting your music library(ies) by -m/-M it will only try to download when you're missing from your library, avoiding duplicated downloads
 
 # Usage example
