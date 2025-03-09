@@ -117,7 +117,7 @@ public class FileSeekService
     {
         const string TrackGroupName = "track";
         
-        string word_pattern = "([\\w\\s\\d\\p{P}]+)";
+        string word_pattern = "([\\w\\s\\d\\p{P}À-ÖØ-öø-ÿŒœ]+)";
         string digit_pattern = "(\\d{1,3})";
         string dash_pattern = "[ ]{0,1}-[ ]{0,1}";
         
