@@ -4,6 +4,10 @@ A simple to use, commandline tool, for downloading from the SoulSeek network
 
 When selecting your music library(ies) by using the parameters -m/-M it will only try to download what music you're missing from your library, avoiding duplicate music/downloads, this is the main power of the entire tool, skipping music you already own and only download what you're missing out on.
 
+Take in mind that the downloads will not move into your music library, this is a very complex process.
+
+If want to move the music from Downloads into your Music Library, take a look at my other project, https://github.com/MusicMoveArr/MusicMover
+
 # Usage example
 ```
 dotnet SeekDownloader \
