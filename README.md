@@ -8,6 +8,8 @@ Take in mind that the downloads will not move into your music library, this is a
 
 If want to move the music from Downloads into your Music Library, take a look at my other project, https://github.com/MusicMoveArr/MusicMover
 
+Loving the work I do? buy me a coffee https://buymeacoffee.com/musicmovearr
+
 # Usage example
 ```
 dotnet SeekDownloader \
