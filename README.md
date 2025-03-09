@@ -41,13 +41,13 @@ Only the ArtistName folder is critical to prevent reading thousands of files/fol
 ## Filename Patterns
 | Description  | Pattern |
 | ------------- | ------------- |
-| Artist Album Number Track | ^([\w\s\d\p{P}]+)[ ]{0,1}-[ ]{0,1}([\w\s\d\p{P}]+)[ ]{0,1}-[ ]{0,1}(\d{1,3}) (?<track>([\w\s\d\p{P}]+))\.(mp3\|flac\|m4a\|opus)$ |
-| Number Artist Track | ^(\d{1,3})[ ]{0,1}-[ ]{0,1}([\w\s\d\p{P}]+)[ ]{0,1}-[ ]{0,1}(?<track>([\w\s\d\p{P}]+))\.(mp3\|flac\|m4a\|opus)$ |
-| Number Artist Track | ^(\d{1,3})\. ([\w\s\d\p{P}]+)[ ]{0,1}-[ ]{0,1}(?<track>([\w\s\d\p{P}]+))\.(mp3\|flac\|m4a\|opus)$ |
-| Collection Year Artist Track | ^([\w\s\d\p{P}]+)[ ]{0,1}-[ ]{0,1}\d{4}[ ]{0,1}-[ ]{0,1}(\d{1,3}) ([\w\s\d\p{P}]+)[ ]{0,1}-[ ]{0,1}(?<track>([\w\s\d\p{P}]+))\.(mp3\|flac\|m4a\|opus)$ |
-| Artist Track | ^([\w\s\d\p{P}]+)[ ]{0,1}-[ ]{0,1}(?<track>([\w\s\d\p{P}]+))\.(mp3\|flac\|m4a\|opus)$ |
-| Disc Number Track | ^(\d{1,3})\. (?<track>([\w\s\d\p{P}]+))\.(mp3\|flac\|m4a\|opus)$ |
-| Number Track | ^(\d{1,3}) (?<track>([\w\s\d\p{P}]+))\.(mp3\|flac\|m4a\|opus)$ |
+| Artist Album Number Track | ^([\w\s\d\p{P}]+)[ ]{0,1}-[ ]{0,1}([\w\s\d\p{P}]+)[ ]{0,1}-[ ]{0,1}(\d{1,3}) (?\<track>([\w\s\d\p{P}]+))\.(mp3\|flac\|m4a\|opus)$ |
+| Number Artist Track | ^(\d{1,3})[ ]{0,1}-[ ]{0,1}([\w\s\d\p{P}]+)[ ]{0,1}-[ ]{0,1}(?\<track>([\w\s\d\p{P}]+))\.(mp3\|flac\|m4a\|opus)$ |
+| Number Artist Track | ^(\d{1,3})\. ([\w\s\d\p{P}]+)[ ]{0,1}-[ ]{0,1}(?\<track>([\w\s\d\p{P}]+))\.(mp3\|flac\|m4a\|opus)$ |
+| Collection Year Artist Track | ^([\w\s\d\p{P}]+)[ ]{0,1}-[ ]{0,1}\d{4}[ ]{0,1}-[ ]{0,1}(\d{1,3}) ([\w\s\d\p{P}]+)[ ]{0,1}-[ ]{0,1}(?\<track>([\w\s\d\p{P}]+))\.(mp3\|flac\|m4a\|opus)$ |
+| Artist Track | ^([\w\s\d\p{P}]+)[ ]{0,1}-[ ]{0,1}(?\<track>([\w\s\d\p{P}]+))\.(mp3\|flac\|m4a\|opus)$ |
+| Disc Number Track | ^(\d{1,3})\. (?\<track>([\w\s\d\p{P}]+))\.(mp3\|flac\|m4a\|opus)$ |
+| Number Track | ^(\d{1,3}) (?\<track>([\w\s\d\p{P}]+))\.(mp3\|flac\|m4a\|opus)$ |
 
 
 # Build
