@@ -125,7 +125,7 @@ public class RootCommand
             }
         }
         
-        while (downloadService.InQueueCount > 0)
+        while (downloadService.InQueueCount > 0 || downloadService.AnyThreadDownloading())
         {
             Thread.Sleep(100);
         }
