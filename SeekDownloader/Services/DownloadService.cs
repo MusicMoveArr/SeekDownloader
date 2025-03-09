@@ -109,6 +109,15 @@ public class DownloadService
             }
         }
     }
+
+    public bool AnyThreadDownloading()
+    {
+        lock (_threadDownloadProgress)
+        {
+            return _threadDownloadProgress
+                .Any(thread => thread.ThreadStatus?.ToLower().Contains("waiting") == false);
+        }
+    }
     
     void DownloadThread(object threadIndexObj)
     {
@@ -180,9 +189,9 @@ public class DownloadService
                         //continue;
                     }
                     
-                    string targetFolder = $"{DownloadFolderNicotine}{downFile.Username}/{folderName}";
-                    string tempTargetFile = $"{targetFolder}/{fileName}.bak";
-                    string realTargetFile = $"{targetFolder}/{fileName}";
+                    string targetFolder = Path.Combine(DownloadFolderNicotine, downFile.Username, folderName);
+                    string tempTargetFile = Path.Combine(targetFolder, $"{fileName}.bak");
+                    string realTargetFile = Path.Combine(targetFolder, fileName);
 
                     lock (_toIgnoreFiles)
                     {
