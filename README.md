@@ -2,11 +2,17 @@
 
 A simple to use, commandline tool, for downloading from the SoulSeek network
 
-When selecting your music library(ies) by -m/-M it will only try to download when you're missing from your library, avoiding duplicated downloads
+When selecting your music library(ies) by using the parameters -m/-M it will only try to download what music you're missing from your library, avoiding duplicate music/downloads, this is the main power of the entire tool, skipping music you already own and only download what you're missing out on.
 
 # Usage example
 ```
-dotnet SeekDownloader -u "John" -P "Doe" -p 12345 -D "~/Downloads" -m "~/Music" -s "deadmau5"
+dotnet SeekDownloader \
+--soulseek-username "John" \
+--soulseek-password "Doe" \
+--soulseek-listen-port 12345 \
+--download-file-path "~/Downloads" \
+--music-library "~/Music" \
+--search-term "deadmau5"
 ```
 
 # Description of arguments
