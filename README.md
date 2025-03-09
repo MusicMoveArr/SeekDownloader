@@ -61,6 +61,22 @@ Only the ArtistName folder is critical to prevent reading thousands of files/fol
 | Disc Number Track | ^(\d{1,3})\. (?\<track>([\w\s\d\p{P}]+))\.(mp3\|flac\|m4a\|opus)$ |
 | Number Track | ^(\d{1,3}) (?\<track>([\w\s\d\p{P}]+))\.(mp3\|flac\|m4a\|opus)$ |
 
+# Textfile Search
+When you want to search for a lot of songs use the following format for your goal
+
+For each line in the text file you can use all formats,
+
+And of course specify the file location by using --search-file-path or -S
+
+```
+Artist
+```
+```
+Artist - Trackname
+```
+```
+Artist - Album - Trackname
+```
 
 # Build
 ## ArchLinux
