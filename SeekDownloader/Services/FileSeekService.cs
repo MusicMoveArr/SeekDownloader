@@ -1,6 +1,8 @@
+using System.Text;
 using System.Text.RegularExpressions;
 using FuzzySharp;
 using Soulseek;
+using File = Soulseek.File;
 
 namespace SeekDownloader.Services;
 
@@ -32,7 +34,7 @@ public class FileSeekService
         try
         {
             AddToCache(songArtistTarget);
-            
+
             var searchQuery = SearchQuery.FromText(searchString);
             var options = new SearchOptions(
                 fileFilter: (file) =>
@@ -51,7 +53,6 @@ public class FileSeekService
             
             var responses = await client.SearchAsync(searchQuery, options: options);
 
-            
             var files = responses.Responses
                 .SelectMany(x =>
                     x.Files
@@ -62,7 +63,7 @@ public class FileSeekService
                             Size = f.Size,
                             HasFreeUploadSlot = x.HasFreeUploadSlot,
                             UploadSpeed = x.UploadSpeed,
-                            TrackName = GetSeekFileName(f.Filename)
+                            TrackName = GetSeekTrackName(f.Filename)
                         })
                         .ToList()
                 )
@@ -113,54 +114,69 @@ public class FileSeekService
         return $"(?<{name}>{regex})";
     }
     
-    private string GetSeekFileName(string fileName)
+    private string GetSeekTrackName(string fileName)
     {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return string.Empty;
+        }
+        
         const string TrackGroupName = "track";
         
-        string word_pattern = "([\\w\\s\\d\\p{P}À-ÖØ-öø-ÿŒœ]+)";
-        string digit_pattern = "(\\d{1,3})";
-        string dash_pattern = "[ ]{0,1}-[ ]{0,1}";
-        
-        string fileExtensionPattern = "\\.(mp3|flac|m4a|opus)$";
-        string Artist_Album_Number_Track_Pattern = $"^{word_pattern}{dash_pattern}{word_pattern}{dash_pattern}{digit_pattern} {GetGroupPattern(word_pattern, TrackGroupName)}" + fileExtensionPattern;
-        string Number_Artist_Track_Pattern = $"^{digit_pattern}{dash_pattern}{word_pattern}{dash_pattern}{GetGroupPattern(word_pattern, TrackGroupName)}" + fileExtensionPattern;
-        string Number_Artist_Track_Pattern2 = $"^{digit_pattern}\\. {word_pattern}{dash_pattern}{GetGroupPattern(word_pattern, TrackGroupName)}" + fileExtensionPattern;
-        string Collection_Year_Artist_Track_Pattern = $"^{word_pattern}{dash_pattern}\\d{{4}}{dash_pattern}{digit_pattern} {word_pattern}{dash_pattern}{GetGroupPattern(word_pattern, TrackGroupName)}" + fileExtensionPattern;
-        string Artist_Track_Pattern = $"^{word_pattern}{dash_pattern}{GetGroupPattern(word_pattern, TrackGroupName)}" + fileExtensionPattern;
-        string Disc_Number_Track_Pattern = $"^{digit_pattern}-{digit_pattern} {GetGroupPattern(word_pattern, TrackGroupName)}" + fileExtensionPattern;
-        string Number_Track_Pattern = $"^{digit_pattern}\\. {GetGroupPattern(word_pattern, TrackGroupName)}" + fileExtensionPattern;
-        string Number_Track_Pattern2 = $"^{digit_pattern} {GetGroupPattern(word_pattern, TrackGroupName)}" + fileExtensionPattern;
-
+        string fileExtensionPattern = @"\.(mp3|flac|m4a|opus|wav|aiff)$";
         string trackName = string.Empty;
         fileName = fileName.Contains("\\") ? fileName.Split("\\").Last() : fileName.Split("//").Last();
         fileName = fileName.Replace('–', '-');
         fileName = fileName.Replace('_', ' ');
 
-        if (Regex.IsMatch(fileName, @"(\[(?=.*[A-Z])(?=.*[a-z])(?=.*\d)[A-Za-z0-9]{11}\])(\.(mp3|flac|m4a|opus))$"))
-        {
-            
-        }
-        
         //replace at the end of the filename the random letters/numbers like [123ABC] (length of 11) (youtube video id's ?), messes up file detection
-        fileName = Regex.Replace(fileName, @"\[?(?=(?:.*\d))(?=(?:.*[A-Z]))(?=(?:.*[a-z]))[A-Za-z0-9\-]{8,11}\]?(?=\.(mp3|flac|m4a|opus)$)", "");
-
+        fileName = Regex.Replace(fileName, @"(\[?(?=(?:.*\d))(?=(?:.*[A-Z]))(?=(?:.*[a-z]))[A-Za-z0-9\-]{8,11}\])?(?=\.(mp3|flac|m4a|opus|wav|aiff)$)", "");
+        
         string[] patterns = new[]
         {
-            $"^{word_pattern}{dash_pattern}{word_pattern}{dash_pattern}{digit_pattern} {GetGroupPattern(word_pattern, TrackGroupName)}" + fileExtensionPattern,
-            $"^{digit_pattern}{dash_pattern}{word_pattern}{dash_pattern}{GetGroupPattern(word_pattern, TrackGroupName)}" + fileExtensionPattern,
-            $"^{digit_pattern}\\. {word_pattern}{dash_pattern}{GetGroupPattern(word_pattern, TrackGroupName)}" + fileExtensionPattern,
-            $"^{word_pattern}{dash_pattern}\\d{{4}}{dash_pattern}{digit_pattern} {word_pattern}{dash_pattern}{GetGroupPattern(word_pattern, TrackGroupName)}" + fileExtensionPattern,
-            $"^{word_pattern}{dash_pattern}{GetGroupPattern(word_pattern, TrackGroupName)}" + fileExtensionPattern,
-            $"^{digit_pattern}{dash_pattern}{digit_pattern} {GetGroupPattern(word_pattern, TrackGroupName)}" + fileExtensionPattern,
-            $"^{digit_pattern}\\. {GetGroupPattern(word_pattern, TrackGroupName)}" + fileExtensionPattern,
-            $"^{digit_pattern} {GetGroupPattern(word_pattern, TrackGroupName)}" + fileExtensionPattern,
+            //Artist - Album - Track.ext
+            $@"^(.+?)\s-\s(.+?)\s-\s(\d{{2}}(?:-\d{{2}})?)\s-\s{GetGroupPattern("(.+?)", TrackGroupName)}{fileExtensionPattern}",
+            
+            //TrackNumber-DiscNumber Artist - TrackName.ext (dot is optional)
+            @$"^(\d{1,3})-(\d{{1,3}})[\.]{0,1}(.+?)[\s]{{0,}}-[\s]{{0,}}(?<track>(.+?)){fileExtensionPattern}",
+            
+            //TrackNumber-DiscNumber TrackName.ext (dot is optional)
+            @$"^(\d{{1,3}})-(\d{{1,3}})[\.]{{0,1}}(?<track>(.+?)){fileExtensionPattern}",
+            
+            //TrackNumber-Artist-TrackName.ext
+            @$"^(\d{{1,3}})[\s]{{0,}}-[\s]{{0,}}(.+?)[\s]{{0,}}-[\s]{{0,}}(?<track>(.+?)){fileExtensionPattern}",
+            
+            //TrackNumber. Artist - TrackName.ext ('.' or '-')
+            @$"^(\d{{1,3}})[\s]{{0,}}(.+?)[-\.]{{1}}[\s]{{0,}}(?<track>(.+?)){fileExtensionPattern}",
+            
+            //TrackNumber. TrackName.ext ('.' or '-')
+            @$"^(\d{{1,3}})[\s]{{0,}}[-\.]{{1}}[\s]{{0,}}(?<track>(.+?)){fileExtensionPattern}",
+            
+            //TrackNumber TrackName.ext (without '.' or '-')
+            @$"^(\d{{1,3}})[\s]{{1,}}(?<track>(.+?)){fileExtensionPattern}",
+            
+            //Artist - Track.ext
+            @$"^(.+?)[\s]{{0,}}-[\s]{{0,}}(?<track>(.+?)){fileExtensionPattern}",
+            
+            //TrackName.ext
+            @$"^(?<track>(.+?)){fileExtensionPattern}",
         };
 
         foreach (string pattern in patterns)
         {
             if (GetTrackName(fileName, pattern, ref trackName))
             {
-                return trackName;
+                if (string.IsNullOrWhiteSpace(trackName
+                        .Replace("-", string.Empty)
+                        .Replace("(", string.Empty)
+                        .Replace(")", string.Empty)
+                        .Replace("[", string.Empty)
+                        .Replace("]", string.Empty)))
+                {
+                    continue;
+                }
+                
+                return trackName.Trim();
             }
         }
 
@@ -173,7 +189,7 @@ public class FileSeekService
         {
             List<FileInfo> musicFiles = ArtistMusicLibraries[artistName];
 
-            string targetFile = GetSeekFileName(fileName);
+            string targetFile = GetSeekTrackName(fileName);
 
             if (string.IsNullOrWhiteSpace(targetFile))
             {
@@ -182,9 +198,8 @@ public class FileSeekService
             }
             
             var similar = musicFiles
-                .Where(musicFile => musicFile.Name.Contains('-'))
-                .Select(musicFile => musicFile.Name.Split('-', StringSplitOptions.TrimEntries).Last())
-                .Select(musicFile => musicFile.Substring(0, musicFile.LastIndexOf('.')))
+                .Select(musicFile => GetSeekTrackName(musicFile.Name))
+                .Where(musicFile => !string.IsNullOrWhiteSpace(musicFile))
                 .FirstOrDefault(musicFile => Fuzz.Ratio(targetFile.ToLower(), musicFile.ToLower()) > 50);
 
             if (similar != null)
@@ -213,7 +228,11 @@ public class FileSeekService
 
                 foreach (var dir in dirs)
                 {
-                    FileInfo[] allFiles = dir.GetFiles("*.*", SearchOption.AllDirectories);
+                    FileInfo[] allFiles = dir
+                        .GetFiles("*.*", SearchOption.AllDirectories)
+                        .Where(file => file.Extension != ".jpg")
+                        .ToArray();
+                    
                     if (ArtistMusicLibraries.ContainsKey(artistName))
                     {
                         ArtistMusicLibraries[artistName].AddRange(allFiles.ToList());
