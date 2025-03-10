@@ -2,11 +2,23 @@
 
 A simple to use, commandline tool, for downloading from the SoulSeek network
 
-When selecting your music library(ies) by -m/-M it will only try to download when you're missing from your library, avoiding duplicated downloads
+When selecting your music library(ies) by using the parameters -m/-M it will only try to download what music you're missing from your library, avoiding duplicate music/downloads, this is the main power of the entire tool, skipping music you already own and only download what you're missing out on.
+
+Take in mind that the downloads will not move into your music library, this is a very complex process.
+
+If want to move the music from Downloads into your Music Library, take a look at my other project, https://github.com/MusicMoveArr/MusicMover
+
+Loving the work I do? buy me a coffee https://buymeacoffee.com/musicmovearr
 
 # Usage example
 ```
-dotnet SeekDownloader -u "John" -P "Doe" -p 12345 -D "~/Downloads" -m "~/Music" -s "deadmau5"
+dotnet SeekDownloader \
+--soulseek-username "John" \
+--soulseek-password "Doe" \
+--soulseek-listen-port 12345 \
+--download-file-path "~/Downloads" \
+--music-library "~/Music" \
+--search-term "deadmau5"
 ```
 
 # Description of arguments
@@ -49,6 +61,22 @@ Only the ArtistName folder is critical to prevent reading thousands of files/fol
 | Disc Number Track | ^(\d{1,3})\. (?\<track>([\w\s\d\p{P}]+))\.(mp3\|flac\|m4a\|opus)$ |
 | Number Track | ^(\d{1,3}) (?\<track>([\w\s\d\p{P}]+))\.(mp3\|flac\|m4a\|opus)$ |
 
+# Textfile Search
+When you want to search for a lot of songs use the following format for your goal
+
+For each line in the text file you can use all formats,
+
+And of course specify the file location by using --search-file-path or -S
+
+```
+Artist
+```
+```
+Artist - Trackname
+```
+```
+Artist - Album - Trackname
+```
 
 # Build
 ## ArchLinux
