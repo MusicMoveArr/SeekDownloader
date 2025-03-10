@@ -138,7 +138,7 @@ public class FileSeekService
             $@"^(.+?)\s-\s(.+?)\s-\s(\d{{2}}(?:-\d{{2}})?)\s-\s{GetGroupPattern("(.+?)", TrackGroupName)}{fileExtensionPattern}",
             
             //TrackNumber-DiscNumber Artist - TrackName.ext (dot is optional)
-            @$"^(\d{1,3})-(\d{{1,3}})[\.]{0,1}(.+?)[\s]{{0,}}-[\s]{{0,}}(?<track>(.+?)){fileExtensionPattern}",
+            @$"^(\d{{1,3}})-(\d{{1,3}})[\.]{{0,1}}(.+?)[\s]{{0,}}-[\s]{{0,}}(?<track>(.+?)){fileExtensionPattern}",
             
             //TrackNumber-DiscNumber TrackName.ext (dot is optional)
             @$"^(\d{{1,3}})-(\d{{1,3}})[\.]{{0,1}}(?<track>(.+?)){fileExtensionPattern}",
