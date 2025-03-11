@@ -19,6 +19,8 @@ public class RootCommand
     /// <param name="threadCount">-t, Download threads to use.</param>
     /// <param name="musicLibraries">-M, Multiple Music Library path(s) to use to check for existing local songs.</param>
     /// <param name="filterOutFileNames">-F, Filter out names to ignore for downloads.</param>
+    /// <param name="groupedDownloads">-G, Put each search into his own download thread.</param>
+    /// <param name="downloadSingles">-DS, When combined with Grouped Downloads, it will quit downloading the entire group after 1 song finished downloading.</param>
     [Command("")]
     public static void DownloadCommand(
             string downloadFilePath,
@@ -29,6 +31,8 @@ public class RootCommand
             string searchTerm = "", 
             string searchFilePath = "", 
             int threadCount = 10,
+            bool groupedDownloads = true,
+            bool downloadSingles = false,
             List<string> musicLibraries = null,
             List<string> filterOutFileNames = null)
     {
@@ -39,6 +43,7 @@ public class RootCommand
         downloadService.ThreadCount = threadCount;
         downloadService.NicotineListenPort = soulseekListenPort;
         downloadService.DownloadFolderNicotine = downloadFilePath;
+        downloadService.DownloadSingles = downloadSingles;
 
         if (!string.IsNullOrWhiteSpace(musicLibrary))
         {
@@ -114,14 +119,31 @@ public class RootCommand
             
             if (results.Count > 0)
             {
-                downloadService.EnqueueDownload(new SearchGroup()
+                if (groupedDownloads)
                 {
-                    SearchResults = results,
-                    TargetAlbumName = songAlbumTarget,
-                    TargetArtistName = songArtistTarget,
-                    TargetSongName = songNameTarget,
-                    SongNames = new List<string>()
-                });
+                    downloadService.EnqueueDownload(new SearchGroup()
+                    {
+                        SearchResults = results,
+                        TargetAlbumName = songAlbumTarget,
+                        TargetArtistName = songArtistTarget,
+                        TargetSongName = songNameTarget,
+                        SongNames = new List<string>()
+                    });
+                }
+                else
+                {
+                    foreach (var result in results)
+                    {
+                        downloadService.EnqueueDownload(new SearchGroup()
+                        {
+                            SearchResults = new List<SearchResult>([result]),
+                            TargetAlbumName = songAlbumTarget,
+                            TargetArtistName = songArtistTarget,
+                            TargetSongName = songNameTarget,
+                            SongNames = new List<string>()
+                        });
+                    }
+                }
             }
         }
         

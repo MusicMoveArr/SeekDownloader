@@ -16,6 +16,7 @@ public class DownloadService
     public string SoulSeekPassword { get; set; }
     public int NicotineListenPort { get; set; }
     public string DownloadFolderNicotine { get; set; }
+    public bool DownloadSingles { get; set; }
     
     public int SeekCount { get; set; }
     public int ThreadCount { get; set; }
@@ -340,7 +341,10 @@ public class DownloadService
                                 }
                             }
 
-                            //break; //for downloading single songs
+                            if (DownloadSingles)
+                            {
+                                break; //for downloading single songs
+                            }
                         }
                     }
                     catch (Exception e)
