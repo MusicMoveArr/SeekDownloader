@@ -40,7 +40,7 @@ public class FileSeekService
                 fileFilter: (file) =>
                 {
                     return MediaFileExtensions.Any(ext => file.Filename.EndsWith(ext)) &&
-                           !filterOutNames.Any(name => file.Filename.ToLower().Contains(name)) &&
+                           (filterOutNames == null || filterOutNames?.Any(name => file.Filename.ToLower().Contains(name)) == false) &&
                            //file.Filename.ToLower().Contains(songNameTarget.ToLower()) &&
                            
                            (file.Filename.ToLower().Contains($"{songArtistTarget.ToLower()}") ||
