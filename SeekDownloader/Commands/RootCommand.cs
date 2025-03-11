@@ -31,7 +31,7 @@ public class RootCommand
             string searchTerm = "", 
             string searchFilePath = "", 
             int threadCount = 10,
-            bool groupedDownloads = true,
+            bool groupedDownloads = false,
             bool downloadSingles = false,
             List<string> musicLibraries = null,
             List<string> filterOutFileNames = null)
