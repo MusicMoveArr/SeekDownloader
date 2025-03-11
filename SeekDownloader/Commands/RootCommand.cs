@@ -25,7 +25,7 @@ public class RootCommand
             int soulseekListenPort,
             string soulseekUsername,
             string soulseekPassword,
-            string musicLibrary,
+            string musicLibrary = "",
             string searchTerm = "", 
             string searchFilePath = "", 
             int threadCount = 10,
