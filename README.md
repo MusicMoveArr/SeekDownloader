@@ -12,7 +12,7 @@ Loving the work I do? buy me a coffee https://buymeacoffee.com/musicmovearr
 
 # Usage example
 ```
-dotnet SeekDownloader \
+dotnet SeekDownloader.dll \
 --soulseek-username "John" \
 --soulseek-password "Doe" \
 --soulseek-listen-port 12345 \
@@ -34,6 +34,8 @@ dotnet SeekDownloader \
 | --thread-count | -t | Download threads to use. (Default: 10) | -t 5 |
 | --music-libraries | -M | Multiple Music Library path(s) to use to check for existing local songs. | -m ["\~/Music", "~/nfs_share_Music"] |
 | --filter-out-file-names | -F | Filter out names to ignore for downloads. | -F ["jazz", "live", "concert", "classic"] |
+| --grouped-downloads | -G | Put each search into his own download thread. | -G |
+| --download-singles | -DS | When combined with Grouped Downloads, it will quit downloading the entire group after 1 song finished downloading. | -DS |
 
 # How MusicLibrary Filtering works
 When selecting your music library(ies) by -m/-M to filter out downloads/music we already own, we will use the following regex'es on soulseek files
