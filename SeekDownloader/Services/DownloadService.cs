@@ -334,9 +334,13 @@ public class DownloadService
                             if (UpdateAlbumName && !string.IsNullOrWhiteSpace(searchGroup.TargetAlbumName))
                             {
                                 Track track = new Track(realTargetFile);
-                                track.AdditionalFields.Add("OriginalAlbumName", track.Album);
-                                track.Album = searchGroup.TargetAlbumName;
-                                track.Save();
+                                bool trackNameMatch = Fuzz.Ratio(track.Title, searchGroup.TargetSongName) >= 90;
+                                if (trackNameMatch)
+                                {
+                                    track.AdditionalFields.Add("OriginalAlbumName", track.Album);
+                                    track.Album = searchGroup.TargetAlbumName;
+                                    track.Save();
+                                }
                             }
                             
                             lock (_toIgnoreFiles)

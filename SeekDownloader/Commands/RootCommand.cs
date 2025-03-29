@@ -11,6 +11,7 @@ public class RootCommand
     /// </summary>
     /// <param name="searchTerm">-s, Search term used to search for music use the order, Artist - Album - Track.</param>
     /// <param name="searchFilePath">-S, Search term(s) used to search for music use from a file.</param>
+    /// <param name="searchDelimeter">-SD, Search term(s) delimeter is used to take the correct Artist, Album, Track names from your Search Term(s).</param>
     /// <param name="downloadFilePath">-D, Download path to store the downloads.</param>
     /// <param name="soulseekListenPort">-p, Soulseek listen port (used for portforwarding).</param>
     /// <param name="soulseekUsername">-U, Soulseek username for login.</param>
@@ -21,13 +22,14 @@ public class RootCommand
     /// <param name="filterOutFileNames">-F, Filter out names to ignore for downloads.</param>
     /// <param name="groupedDownloads">-G, Put each search into his own download thread.</param>
     /// <param name="downloadSingles">-DS, When combined with Grouped Downloads, it will quit downloading the entire group after 1 song finished downloading.</param>
-    /// <param name="updateAlbumName">-UA, Update the Album name's tag by your search term.</param>
+    /// <param name="updateAlbumName">-UA, Update the Album name's tag by your search term, only updates if Trackname matches as well for +90%.</param>
     [Command("")]
     public static void DownloadCommand(
             string downloadFilePath,
             int soulseekListenPort,
             string soulseekUsername,
             string soulseekPassword,
+            string searchDelimeter = "-",
             string musicLibrary = "",
             string searchTerm = "", 
             string searchFilePath = "", 
@@ -74,23 +76,20 @@ public class RootCommand
         
         foreach (string name in downloadService.MissingNames)
         {
-            downloadService.SeekCount++;
-            downloadService.CurrentlySeeking = name;
-            
-            var split = name.Split('-', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            var split = name.Split(searchDelimeter, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
             string songNameTarget = string.Empty;
             string songAlbumTarget = string.Empty;
             string songArtistTarget = string.Empty;
             
             if (split.Length > 2)
             {
-                songNameTarget = string.Join(" - ",split.Skip(2).ToList());
+                songNameTarget = string.Join(searchDelimeter,split.Skip(2).ToList());
                 songAlbumTarget = split.Skip(1).First();
                 songArtistTarget = split.First();
             }
             else if (split.Length > 1)
             {
-                songNameTarget = string.Join(" - ",split.Skip(1).ToList());
+                songNameTarget = string.Join(searchDelimeter, split.Skip(1).ToList());
                 songAlbumTarget = split.First();
             }
             else
@@ -102,9 +101,28 @@ public class RootCommand
             {
                 Thread.Sleep(1000);
             }
+
+            List<string> reconstructedName = new List<string>();
+            if (!string.IsNullOrWhiteSpace(songArtistTarget))
+            {
+                reconstructedName.Add(songArtistTarget);
+            }
+            if (!string.IsNullOrWhiteSpace(songAlbumTarget))
+            {
+                reconstructedName.Add(songAlbumTarget);
+            }
+            if (!string.IsNullOrWhiteSpace(songNameTarget))
+            {
+                reconstructedName.Add(songNameTarget);
+            }
+
+            string tempSearchTerm = string.Join(" - ", reconstructedName);
+            
+            downloadService.SeekCount++;
+            downloadService.CurrentlySeeking = tempSearchTerm;
             
             var results = fileSeeker.
-                SearchAsync(name, songNameTarget, songArtistTarget,  downloadService.SoulClient, filterOutFileNames)
+                SearchAsync(tempSearchTerm, songNameTarget, songArtistTarget,  downloadService.SoulClient, filterOutFileNames)
                 .GetAwaiter()
                 .GetResult();
             
