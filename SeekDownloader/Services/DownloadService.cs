@@ -331,10 +331,12 @@ public class DownloadService
                         {
                             tempTargetFileInfo.MoveTo(realTargetFile, true);
 
-                            if (UpdateAlbumName && !string.IsNullOrWhiteSpace(searchGroup.TargetAlbumName))
+                            if (UpdateAlbumName && 
+                                !string.IsNullOrWhiteSpace(searchGroup.TargetAlbumName) && 
+                                !string.IsNullOrWhiteSpace(searchGroup.TargetSongName))
                             {
                                 Track track = new Track(realTargetFile);
-                                bool trackNameMatch = Fuzz.Ratio(track.Title, searchGroup.TargetSongName) >= 90;
+                                bool trackNameMatch = Fuzz.Ratio(searchGroup.TargetSongName.ToLower(), track.Title.ToLower()) >= 90;
                                 if (trackNameMatch)
                                 {
                                     track.AdditionalFields.Add("OriginalAlbumName", track.Album);
