@@ -84,13 +84,13 @@ public class RootCommand
             
             if (split.Length > 2)
             {
-                songNameTarget = split.Last();
+                songNameTarget = string.Join(" - ",split.Skip(2).ToList());
                 songAlbumTarget = split.Skip(1).First();
                 songArtistTarget = split.First();
             }
             else if (split.Length > 1)
             {
-                songNameTarget = split.Last();
+                songNameTarget = string.Join(" - ",split.Skip(1).ToList());
                 songAlbumTarget = split.First();
             }
             else
