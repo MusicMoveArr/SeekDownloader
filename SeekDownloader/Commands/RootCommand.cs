@@ -21,6 +21,7 @@ public class RootCommand
     /// <param name="filterOutFileNames">-F, Filter out names to ignore for downloads.</param>
     /// <param name="groupedDownloads">-G, Put each search into his own download thread.</param>
     /// <param name="downloadSingles">-DS, When combined with Grouped Downloads, it will quit downloading the entire group after 1 song finished downloading.</param>
+    /// <param name="updateAlbumName">-UA, Update the Album name's tag by your search term.</param>
     [Command("")]
     public static void DownloadCommand(
             string downloadFilePath,
@@ -33,6 +34,7 @@ public class RootCommand
             int threadCount = 10,
             bool groupedDownloads = false,
             bool downloadSingles = false,
+            bool updateAlbumName = false,
             List<string> musicLibraries = null,
             List<string> filterOutFileNames = null)
     {
@@ -44,7 +46,8 @@ public class RootCommand
         downloadService.NicotineListenPort = soulseekListenPort;
         downloadService.DownloadFolderNicotine = downloadFilePath;
         downloadService.DownloadSingles = downloadSingles;
-
+        downloadService.UpdateAlbumName = updateAlbumName;
+        
         if (!string.IsNullOrWhiteSpace(musicLibrary))
         {
             fileSeeker.MusicLibraries.Add(musicLibrary);
@@ -112,7 +115,7 @@ public class RootCommand
                 downloadService.ConnectAsync().GetAwaiter().GetResult();
             }
             
-            if (results.Count() > 1)
+            if (results.Any())
             {
                 downloadService.SeekSuccessCount++;
             }

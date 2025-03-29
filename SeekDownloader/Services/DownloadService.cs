@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
+using ATL;
 using FuzzySharp;
 using Soulseek;
 using Soulseek.Diagnostics;
@@ -23,6 +24,8 @@ public class DownloadService
     public int AlreadyDownloadedSkipCount { get; set; }
     public int SeekSuccessCount { get; set; }
     public string CurrentlySeeking { get; set; } = string.Empty;
+    
+    public bool UpdateAlbumName { get; set; }
     
     private ConcurrentQueue<SearchGroup> _searchGroups = new ConcurrentQueue<SearchGroup>();
     private Dictionary<string, DownloadProgress> _lastProgressReport = new Dictionary<string, DownloadProgress>();
@@ -328,6 +331,14 @@ public class DownloadService
                         {
                             tempTargetFileInfo.MoveTo(realTargetFile, true);
 
+                            if (UpdateAlbumName && !string.IsNullOrWhiteSpace(searchGroup.TargetAlbumName))
+                            {
+                                Track track = new Track(realTargetFile);
+                                track.AdditionalFields.Add("OriginalAlbumName", track.Album);
+                                track.Album = searchGroup.TargetAlbumName;
+                                track.Save();
+                            }
+                            
                             lock (_toIgnoreFiles)
                             {
                                 _toIgnoreFiles.Add(fileName);
