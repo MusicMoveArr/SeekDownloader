@@ -36,6 +36,8 @@ dotnet SeekDownloader.dll \
 | --filter-out-file-names | -F | Filter out names to ignore for downloads. | -F ["jazz", "live", "concert", "classic"] |
 | --grouped-downloads | -G | Put each search into his own download thread. | -G |
 | --download-singles | -DS | When combined with Grouped Downloads, it will quit downloading the entire group after 1 song finished downloading. | -DS |
+| --search-delimeter | -SD | Search term(s) delimeter is used to take the correct Artist, Album, Track names from your Search Term(s). | -SD |
+| --update-album-name | -UA | Update the Album name's tag by your search term, only updates if Trackname matches as well for +90%. | -UA |
 
 # How MusicLibrary Filtering works
 When selecting your music library(ies) by -m/-M to filter out downloads/music we already own, we will use the following regex'es on soulseek files
@@ -55,13 +57,15 @@ Only the ArtistName folder is critical to prevent reading thousands of files/fol
 ## Filename Patterns
 | Description  | Pattern |
 | ------------- | ------------- |
-| Artist Album Number Track | ^([\w\s\d\p{P}]+)[ ]{0,1}-[ ]{0,1}([\w\s\d\p{P}]+)[ ]{0,1}-[ ]{0,1}(\d{1,3}) (?\<track>([\w\s\d\p{P}]+))\.(mp3\|flac\|m4a\|opus)$ |
-| Number Artist Track | ^(\d{1,3})[ ]{0,1}-[ ]{0,1}([\w\s\d\p{P}]+)[ ]{0,1}-[ ]{0,1}(?\<track>([\w\s\d\p{P}]+))\.(mp3\|flac\|m4a\|opus)$ |
-| Number Artist Track | ^(\d{1,3})\. ([\w\s\d\p{P}]+)[ ]{0,1}-[ ]{0,1}(?\<track>([\w\s\d\p{P}]+))\.(mp3\|flac\|m4a\|opus)$ |
-| Collection Year Artist Track | ^([\w\s\d\p{P}]+)[ ]{0,1}-[ ]{0,1}\d{4}[ ]{0,1}-[ ]{0,1}(\d{1,3}) ([\w\s\d\p{P}]+)[ ]{0,1}-[ ]{0,1}(?\<track>([\w\s\d\p{P}]+))\.(mp3\|flac\|m4a\|opus)$ |
-| Artist Track | ^([\w\s\d\p{P}]+)[ ]{0,1}-[ ]{0,1}(?\<track>([\w\s\d\p{P}]+))\.(mp3\|flac\|m4a\|opus)$ |
-| Disc Number Track | ^(\d{1,3})\. (?\<track>([\w\s\d\p{P}]+))\.(mp3\|flac\|m4a\|opus)$ |
-| Number Track | ^(\d{1,3}) (?\<track>([\w\s\d\p{P}]+))\.(mp3\|flac\|m4a\|opus)$ |
+| Artist - Album - Track.ext | ^(.+?)\s-\s(.+?)\s-\s(\d{2}(?:-\d{2})?)\s-\s(?\<track>(.+?))\.(mp3\|flac\|m4a\|opus\|wav\|aiff)$ |
+| TrackNumber-DiscNumber Artist - TrackName.ext (dot is optional) | ^(\d{1,3})-(\d{1,3})[\.]{0,1}(.+?)[\s]{0,}-[\s]{0,}(?\<track>(.+?))\.(mp3\|flac\|m4a\|opus\|wav\|aiff)$ |
+| TrackNumber-DiscNumber TrackName.ext (dot is optional) | ^(\d{1,3})-(\d{1,3})[\.]{0,1}(?\<track>(.+?))\.(mp3\|flac\|m4a\|opus\|wav\|aiff)$ |
+| TrackNumber-Artist-TrackName.ext | ^(\d{1,3})[\s]{0,}-[\s]{0,}(.+?)[\s]{0,}-[\s]{0,}(?\<track>(.+?))\.(mp3\|flac\|m4a\|opus\|wav\|aiff)$ |
+| TrackNumber. Artist - TrackName.ext ('.' or '-') | ^(\d{1,3})[\s]{0,}(.+?)[-\.]{1}[\s]{0,}(?\<track>(.+?))\.(mp3\|flac\|m4a\|opus\|wav\|aiff)$ |
+| TrackNumber. TrackName.ext ('.' or '-') | ^(\d{1,3})[\s]{0,}[-\.]{1}[\s]{0,}(?\<track>(.+?))\.(mp3\|flac\|m4a\|opus\|wav\|aiff)$ |
+| TrackNumber TrackName.ext (without '.' or '-') | ^(\d{1,3})[\s]{1,}(?\<track>(.+?))\.(mp3\|flac\|m4a\|opus\|wav\|aiff)$ |
+| Artist - Track.ext | ^(.+?)[\s]{0,}-[\s]{0,}(?\<track>(.+?))\.(mp3\|flac\|m4a\|opus\|wav\|aiff)$ |
+| TrackName.ext | ^(?\<track>(.+?))\.(mp3\|flac\|m4a\|opus\|wav\|aiff)$ |
 
 # Textfile Search
 When you want to search for a lot of songs use the following format for your goal
