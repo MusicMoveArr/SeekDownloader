@@ -336,7 +336,11 @@ public class DownloadService
                                 !string.IsNullOrWhiteSpace(searchGroup.TargetSongName))
                             {
                                 Track track = new Track(realTargetFile);
-                                bool artistNameMatch = Fuzz.Ratio(searchGroup.TargetArtistName.ToLower(), track.Artist.ToLower()) >= 90;
+                                bool artistNameMatch = Fuzz.Ratio(searchGroup.TargetArtistName.ToLower(), track.Artist.ToLower()) >= 90 ||
+                                                       Fuzz.Ratio(searchGroup.TargetArtistName.ToLower(), track.AlbumArtist.ToLower()) >= 90 ||
+                                                       Fuzz.Ratio(searchGroup.TargetArtistName.ToLower(), track.SortArtist.ToLower()) >= 90 ||
+                                                       Fuzz.Ratio(searchGroup.TargetArtistName.ToLower(), track.SortAlbumArtist.ToLower()) >= 90;
+                                
                                 bool trackNameMatch = Fuzz.Ratio(searchGroup.TargetSongName.ToLower(), track.Title.ToLower()) >= 90;
                                 if (artistNameMatch && trackNameMatch)
                                 {
