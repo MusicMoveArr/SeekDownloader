@@ -39,6 +39,7 @@ public class FileSeekService
             var options = new SearchOptions(
                 fileFilter: (file) =>
                 {
+                    string seekTrackName = GetSeekTrackName(file.Filename.ToLower());
                     return MediaFileExtensions.Any(ext => file.Filename.EndsWith(ext)) &&
                            (filterOutNames == null || filterOutNames?.Any(name => file.Filename.ToLower().Contains(name)) == false) &&
                            //file.Filename.ToLower().Contains(songNameTarget.ToLower()) &&
@@ -48,6 +49,9 @@ public class FileSeekService
                             file.Filename.ToLower().Contains($"//{songArtistTarget.ToLower()}//")) &&
                            
                            file.Size < maxFileSize &&
+                           (!string.IsNullOrWhiteSpace(seekTrackName) && 
+                            !string.IsNullOrWhiteSpace(songNameTarget) && 
+                            Fuzz.Ratio(songNameTarget.ToLower(), seekTrackName) > 70) &&
                            !AlreadyInLibrary(songArtistTarget, file.Filename);
                 });
             
