@@ -23,6 +23,8 @@ public class RootCommand
     /// <param name="groupedDownloads">-G, Put each search into his own download thread.</param>
     /// <param name="downloadSingles">-DS, When combined with Grouped Downloads, it will quit downloading the entire group after 1 song finished downloading.</param>
     /// <param name="updateAlbumName">-UA, Update the Album name's tag by your search term, only updates if Trackname matches as well for +90%.</param>
+    /// <param name="checkTags">-CT, Check the tags if we downloaded the correct track.</param>
+    /// <param name="checkTagsDelete">-CD, If the tags do not match the search, delete after download.</param>
     [Command("")]
     public static void DownloadCommand(
             string downloadFilePath,
@@ -38,7 +40,9 @@ public class RootCommand
             bool downloadSingles = false,
             bool updateAlbumName = false,
             List<string> musicLibraries = null,
-            List<string> filterOutFileNames = null)
+            List<string> filterOutFileNames = null,
+            bool checkTags = false,
+            bool checkTagsDelete = false)
     {
         FileSeekService fileSeeker = new FileSeekService();
         DownloadService downloadService = new DownloadService();
@@ -49,6 +53,8 @@ public class RootCommand
         downloadService.DownloadFolderNicotine = downloadFilePath;
         downloadService.DownloadSingles = downloadSingles;
         downloadService.UpdateAlbumName = updateAlbumName;
+        downloadService.CheckTags = checkTags;
+        downloadService.CheckTagsDelete = checkTagsDelete;
         
         if (!string.IsNullOrWhiteSpace(musicLibrary))
         {

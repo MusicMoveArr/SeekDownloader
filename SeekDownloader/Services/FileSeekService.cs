@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using FuzzySharp;
+using SeekDownloader.Helpers;
 using Soulseek;
 using File = Soulseek.File;
 
@@ -51,7 +52,8 @@ public class FileSeekService
                            file.Size < maxFileSize &&
                            (!string.IsNullOrWhiteSpace(seekTrackName) && 
                             !string.IsNullOrWhiteSpace(songNameTarget) && 
-                            Fuzz.Ratio(songNameTarget.ToLower(), seekTrackName) > 70) &&
+                            Fuzz.Ratio(songNameTarget.ToLower(), seekTrackName) > 70 &&
+                            FuzzyHelper.ExactNumberMatch(songNameTarget, seekTrackName)) &&
                            !AlreadyInLibrary(songArtistTarget, file.Filename);
                 });
             
@@ -78,14 +80,15 @@ public class FileSeekService
                     extension = file.Filename.Substring(file.Filename.LastIndexOf('.'))
                 })
                 .Select(file => file.FirstOrDefault())
+                .Where(file => file != null)
                 .DistinctBy(r => new
                 {
-                    r.Filename,
-                    r.Username
+                    r?.Filename,
+                    r?.Username
                 })
-                .OrderByDescending(r => r.HasFreeUploadSlot)
-                .ThenByDescending(r => r.Size)
-                .ThenByDescending(r => r.UploadSpeed)
+                .OrderByDescending(r => r?.HasFreeUploadSlot)
+                .ThenByDescending(r => r?.Size)
+                .ThenByDescending(r => r?.UploadSpeed)
                 .ToList();
             
             return files;
@@ -204,6 +207,7 @@ public class FileSeekService
             var similar = musicFiles
                 .Select(musicFile => GetSeekTrackName(musicFile.Name))
                 .Where(musicFile => !string.IsNullOrWhiteSpace(musicFile))
+                .Where(musicFile => FuzzyHelper.ExactNumberMatch(targetFile, musicFile.ToLower()))
                 .FirstOrDefault(musicFile => Fuzz.Ratio(targetFile.ToLower(), musicFile.ToLower()) > 50);
 
             if (similar != null)

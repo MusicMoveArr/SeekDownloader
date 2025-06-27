@@ -2,10 +2,10 @@ namespace SeekDownloader;
 
 public class SearchResult
 {
-    public string Username { get; set; }
-    public string Filename { get; set; }
-    public long Size { get; set; }
-    public bool HasFreeUploadSlot { get; set; }
-    public int UploadSpeed { get; set; }
-    public string TrackName { get; set; }
+    public required string Username { get; init; }
+    public required string Filename { get; init; }
+    public required long Size { get; init; }
+    public required bool HasFreeUploadSlot { get; init; }
+    public required int UploadSpeed { get; init; }
+    public required string TrackName { get; init; }
 }
