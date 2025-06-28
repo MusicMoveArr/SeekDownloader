@@ -1,101 +1,157 @@
-using ConsoleAppFramework;
+using CliFx;
+using CliFx.Attributes;
+using CliFx.Infrastructure;
 using SeekDownloader.Services;
 using Soulseek;
 
 namespace SeekDownloader.Commands;
 
-public class RootCommand
+[Command("", Description = "A simple to use, commandline tool, for downloading from the SoulSeek network")]
+public class RootCommand : ICommand
 {
-    /// <summary>
-    /// Split the target media tag by the seperator
-    /// </summary>
-    /// <param name="searchTerm">-s, Search term used to search for music use the order, Artist - Album - Track.</param>
-    /// <param name="searchFilePath">-S, Search term(s) used to search for music use from a file.</param>
-    /// <param name="searchDelimeter">-SD, Search term(s) delimeter is used to take the correct Artist, Album, Track names from your Search Term(s).</param>
-    /// <param name="downloadFilePath">-D, Download path to store the downloads.</param>
-    /// <param name="soulseekListenPort">-p, Soulseek listen port (used for portforwarding).</param>
-    /// <param name="soulseekUsername">-U, Soulseek username for login.</param>
-    /// <param name="soulseekPassword">-P, Soulseek password for login.</param>
-    /// <param name="musicLibrary">-m, Music Library path to use to check for existing local songs.</param>
-    /// <param name="threadCount">-t, Download threads to use.</param>
-    /// <param name="musicLibraries">-M, Multiple Music Library path(s) to use to check for existing local songs.</param>
-    /// <param name="filterOutFileNames">-F, Filter out names to ignore for downloads.</param>
-    /// <param name="groupedDownloads">-G, Put each search into his own download thread.</param>
-    /// <param name="downloadSingles">-DS, When combined with Grouped Downloads, it will quit downloading the entire group after 1 song finished downloading.</param>
-    /// <param name="updateAlbumName">-UA, Update the Album name's tag by your search term, only updates if Trackname matches as well for +90%.</param>
-    /// <param name="checkTags">-CT, Check the tags if we downloaded the correct track.</param>
-    /// <param name="checkTagsDelete">-CD, If the tags do not match the search, delete after download.</param>
-    [Command("")]
-    public static void DownloadCommand(
-            string downloadFilePath,
-            int soulseekListenPort,
-            string soulseekUsername,
-            string soulseekPassword,
-            string searchDelimeter = "-",
-            string musicLibrary = "",
-            string searchTerm = "", 
-            string searchFilePath = "", 
-            int threadCount = 10,
-            bool groupedDownloads = false,
-            bool downloadSingles = false,
-            bool updateAlbumName = false,
-            List<string> musicLibraries = null,
-            List<string> filterOutFileNames = null,
-            bool checkTags = false,
-            bool checkTagsDelete = false)
+    [CommandOption("download-file-path", 
+        Description = "Download path to store the downloads.", 
+        EnvironmentVariable = "SEEK_DOWNLOADFILEPATH",
+        IsRequired = true)]
+    public required string DownloadFilePath { get; init; }
+    
+    [CommandOption("soulseek-listen-port", 
+        Description = "Soulseek listen port (used for portforwarding).", 
+        EnvironmentVariable = "SEEK_SOULSEEKLISTENPORT",
+        IsRequired = true)]
+    public required int SoulseekListenPort { get; init; }
+    
+    [CommandOption("soulseek-username", 
+        Description = "Soulseek username for login.", 
+        EnvironmentVariable = "SEEK_SOULSEEKUSERNAME",
+        IsRequired = true)]
+    public required string SoulseekUsername { get; init; }
+    
+    [CommandOption("soulseek-password", 
+        Description = "Soulseek password for login.", 
+        EnvironmentVariable = "SEEK_SOULSEEKPASSWORD",
+        IsRequired = true)]
+    public required string SoulseekPassword { get; init; }
+    
+    [CommandOption("search-delimeter", 
+        Description = "Search term(s) delimeter is used to take the correct Artist, Album, Track names from your Search Term(s).", 
+        EnvironmentVariable = "SEEK_SEARCHDELIMETER")]
+    public string SearchDelimeter { get; set; } = "-";
+    
+    [CommandOption("music-library", 
+        Description = "Music Library path to use to check for existing local songs.", 
+        EnvironmentVariable = "SEEK_MUSICLIBRARY")]
+    public string MusicLibrary { get; set; } = string.Empty;
+    
+    [CommandOption("search-term", 
+        Description = "Search term used to search for music use the order, Artist - Album - Track.", 
+        EnvironmentVariable = "SEEK_SEARCHTERM")]
+    public string SearchTerm { get; set; } = string.Empty;
+
+    [CommandOption("search-file-path",
+        Description = "Search term(s) used to search for music use from a file.",
+        EnvironmentVariable = "SEEK_SEARCHFILEPATH")]
+    public string SearchFilePath { get; set; } = string.Empty;
+
+    [CommandOption("thread-count",
+        Description = "Download threads to use.",
+        EnvironmentVariable = "SEEK_THREADCOUNT")]
+    public int ThreadCount { get; set; } = 10;
+    
+    [CommandOption("grouped-downloads", 
+        Description = "Put each search into his own download thread.", 
+        EnvironmentVariable = "SEEK_GROUPEDDOWNLOADS")]
+    public bool GroupedDownloads { get; set; } = false;
+    
+    [CommandOption("download-singles", 
+        Description = "When combined with Grouped Downloads, it will quit downloading the entire group after 1 song finished downloading.", 
+        EnvironmentVariable = "SEEK_DOWNLOADSINGLES")]
+    public bool DownloadSingles { get; set; } = false;
+    
+    [CommandOption("update-album-name", 
+        Description = "Update the Album name's tag by your search term, only updates if Trackname matches as well for +90%.", 
+        EnvironmentVariable = "SEEK_UPDATEALBUMNAME")]
+    public bool UpdateAlbumName { get; set; } = false;
+    
+    [CommandOption("music-libraries", 
+        Description = "Multiple Music Library path(s) to use to check for existing local songs.", 
+        EnvironmentVariable = "SEEK_MUSICLIBRARIES")]
+    public List<string> MusicLibraries { get; set; } = null;
+
+    [CommandOption("filter-out-file-names",
+        Description = "Filter out names to ignore for downloads.",
+        EnvironmentVariable = "SEEK_FILTEROUTFILENAMES")]
+    public List<string> FilterOutFileNames { get; set; } = null;
+    
+    [CommandOption("check-tags", 
+        Description = "Check the tags if we downloaded the correct track.", 
+        EnvironmentVariable = "SEEK_CHECKTAGS")]
+    public bool CheckTags { get; set; } = false;
+
+    [CommandOption("check-tags-delete",
+        Description = "If the tags do not match the search, delete after download.",
+        EnvironmentVariable = "SEEK_CHECKTAGSDELETE")]
+    public bool CheckTagsDelete { get; set; } = false;
+
+    [CommandOption("output-status",
+        Description = "Output the overall status and of each thread.",
+        EnvironmentVariable = "SEEK_OUTPUTSTATUS")]
+    public bool OutputStatus { get; set; } = true;
+    
+    public async ValueTask ExecuteAsync(IConsole console)
     {
         FileSeekService fileSeeker = new FileSeekService();
         DownloadService downloadService = new DownloadService();
-        downloadService.SoulSeekUsername = soulseekUsername;
-        downloadService.SoulSeekPassword = soulseekPassword;
-        downloadService.ThreadCount = threadCount;
-        downloadService.NicotineListenPort = soulseekListenPort;
-        downloadService.DownloadFolderNicotine = downloadFilePath;
-        downloadService.DownloadSingles = downloadSingles;
-        downloadService.UpdateAlbumName = updateAlbumName;
-        downloadService.CheckTags = checkTags;
-        downloadService.CheckTagsDelete = checkTagsDelete;
+        downloadService.SoulSeekUsername = SoulseekUsername;
+        downloadService.SoulSeekPassword = SoulseekPassword;
+        downloadService.ThreadCount = ThreadCount;
+        downloadService.NicotineListenPort = SoulseekListenPort;
+        downloadService.DownloadFolderNicotine = DownloadFilePath;
+        downloadService.DownloadSingles = DownloadSingles;
+        downloadService.UpdateAlbumName = UpdateAlbumName;
+        downloadService.CheckTags = CheckTags;
+        downloadService.CheckTagsDelete = CheckTagsDelete;
+        downloadService.OutputStatus = OutputStatus;
         
-        if (!string.IsNullOrWhiteSpace(musicLibrary))
+        if (!string.IsNullOrWhiteSpace(MusicLibrary))
         {
-            fileSeeker.MusicLibraries.Add(musicLibrary);
+            fileSeeker.MusicLibraries.Add(MusicLibrary);
         }
-        if (musicLibraries?.Count > 0)
+        if (MusicLibraries?.Count > 0)
         {
-            fileSeeker.MusicLibraries.AddRange(musicLibraries);
+            fileSeeker.MusicLibraries.AddRange(MusicLibraries);
         }
         
-        if (!string.IsNullOrWhiteSpace(searchTerm))
+        if (!string.IsNullOrWhiteSpace(SearchTerm))
         {
-            downloadService.MissingNames.Add(searchTerm);
+            downloadService.MissingNames.Add(SearchTerm);
         }
-        if (!string.IsNullOrWhiteSpace(searchFilePath))
+        if (!string.IsNullOrWhiteSpace(SearchFilePath))
         {
-            downloadService.MissingNames.AddRange(System.IO.File
-                .ReadAllLines(searchFilePath)
+            downloadService.MissingNames.AddRange((await System.IO.File.ReadAllLinesAsync(SearchFilePath))
                 .Where(line => !string.IsNullOrWhiteSpace(line))
                 .Distinct());
         }
         
-        downloadService.ConnectAsync().GetAwaiter().GetResult();
+        await downloadService.ConnectAsync();
         downloadService.StartThreads();
         
         foreach (string name in downloadService.MissingNames)
         {
-            var split = name.Split(searchDelimeter, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            var split = name.Split(SearchDelimeter, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
             string songNameTarget = string.Empty;
             string songAlbumTarget = string.Empty;
             string songArtistTarget = string.Empty;
             
             if (split.Length > 2)
             {
-                songNameTarget = string.Join(searchDelimeter,split.Skip(2).ToList());
+                songNameTarget = string.Join(SearchDelimeter,split.Skip(2).ToList());
                 songAlbumTarget = split.Skip(1).First();
                 songArtistTarget = split.First();
             }
             else if (split.Length > 1)
             {
-                songNameTarget = string.Join(searchDelimeter, split.Skip(1).ToList());
+                songNameTarget = string.Join(SearchDelimeter, split.Skip(1).ToList());
                 songAlbumTarget = split.First();
             }
             else
@@ -126,27 +182,30 @@ public class RootCommand
             
             downloadService.SeekCount++;
             downloadService.CurrentlySeeking = tempSearchTerm;
-            
-            var results = fileSeeker.
-                SearchAsync(tempSearchTerm, songNameTarget, songArtistTarget,  downloadService.SoulClient, filterOutFileNames)
-                .GetAwaiter()
-                .GetResult();
+
+            var results = await fileSeeker.SearchAsync(tempSearchTerm, songNameTarget, songArtistTarget,
+                downloadService.SoulClient, FilterOutFileNames);
             
             if (!string.IsNullOrWhiteSpace(fileSeeker.LastErrorMessage) 
                 && !downloadService.SoulClient.State.ToString().Contains(SoulseekClientStates.Connected.ToString())
                 && !downloadService.SoulClient.State.ToString().Contains(SoulseekClientStates.LoggedIn.ToString()))
             {
-                downloadService.ConnectAsync().GetAwaiter().GetResult();
+                await downloadService.ConnectAsync();
             }
             
             if (results.Any())
             {
                 downloadService.SeekSuccessCount++;
             }
+
+            if (!OutputStatus)
+            {
+                Console.WriteLine($"Seeked: '{tempSearchTerm}, Found {results.Count} files");
+            }
             
             if (results.Count > 0)
             {
-                if (groupedDownloads)
+                if (GroupedDownloads)
                 {
                     downloadService.EnqueueDownload(new SearchGroup()
                     {

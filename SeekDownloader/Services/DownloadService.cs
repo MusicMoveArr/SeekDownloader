@@ -45,6 +45,7 @@ public class DownloadService
     public int InQueueCount => _searchGroups.Count;
     public bool CheckTags { get; set; }
     public bool CheckTagsDelete { get; set; }
+    public bool OutputStatus { get; set; }
 
     public async Task ConnectAsync()
     {
@@ -92,8 +93,12 @@ public class DownloadService
             thread.Start(i);
             _downloadThreads.Add(thread);
         }
-        _progressThread = new Thread(new ThreadStart(ProgressThread));
-        _progressThread.Start();
+
+        if (OutputStatus)
+        {
+            _progressThread = new Thread(new ThreadStart(ProgressThread));
+            _progressThread.Start();
+        }
     }
 
     public void StopThreads()
@@ -147,6 +152,11 @@ public class DownloadService
                 {
                     while (!EnoughDiskSpace(DownloadFolderNicotine) && !_stopThreads)
                     {
+                        if (!OutputStatus)
+                        {
+                            Console.WriteLine($"Waiting for diskspace");
+                        }
+                        
                         SetThreadStatus(threadIndex, status => status.ThreadStatus = $"[{DateTime.Now.ToString("HH:mm:ss")}] Waiting for diskspace");
                         Thread.Sleep(5000);
                     }
@@ -187,6 +197,11 @@ public class DownloadService
                     }
                     catch (Exception e)
                     {
+                        if (!OutputStatus)
+                        {
+                            Console.WriteLine($"Error, {e.Message}");
+                        }
+                        
                         SetThreadStatus(threadIndex, status => status.ThreadStatus = $"[{DateTime.Now.ToString("HH:mm:ss")}] Error, {e.Message}");
                         //continue;
                     }
@@ -234,6 +249,11 @@ public class DownloadService
                     
                     try
                     {
+                        if (!OutputStatus)
+                        {
+                            Console.WriteLine($"Downloading, '{downFile.Filename}'");
+                        }
+                        
                         SetThreadStatus(threadIndex, status => status.ThreadStatus = $"[{DateTime.Now.ToString("HH:mm:ss")}] Downloading");
 
                         double averageSpeed = 0;
@@ -294,6 +314,10 @@ public class DownloadService
 
                         if (downloadTask.IsFaulted || downloadTask.Exception != null)
                         {
+                            if (!OutputStatus)
+                            {
+                                Console.WriteLine($"Download failed for '{downFile.Filename}'");
+                            }
                             SetThreadStatus(threadIndex, status => status.ThreadStatus = $"[{DateTime.Now.ToString("HH:mm:ss")}] Download failed");
                             lock (_errors)
                             {
@@ -376,6 +400,11 @@ public class DownloadService
                             lock (_toIgnoreFiles)
                             {
                                 _toIgnoreFiles.Add(fileName);
+                            }
+
+                            if (!OutputStatus)
+                            {
+                                Console.WriteLine($"Downloaded '{realTargetFile}'");
                             }
 
                             if (_cachedNicotineFiles != null)
