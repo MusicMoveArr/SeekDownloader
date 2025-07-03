@@ -505,8 +505,10 @@ public class DownloadService
             {
                 foreach (var progress in _threadDownloadProgress)
                 {
+                    var downloadProgress = downloads.FirstOrDefault(d => d.ThreadIndex == progress.ThreadIndex);
+                    
                     int downloadSpeed = (int)(progress.AverageDownloadSpeed / 1000);
-                    output.AppendLine($"Thread {progress.ThreadIndex}: {progress.ThreadStatus}, Download speed: {downloadSpeed}KBps".PadRight(totalWidth));
+                    output.AppendLine($"Thread {progress.ThreadIndex}: {progress.ThreadStatus}, Download speed: {downloadSpeed}KBps{DrawProgressBar(downloadProgress)}".PadRight(totalWidth));
                 }
             }
             
@@ -516,11 +518,6 @@ public class DownloadService
                 {
                     output.AppendLine($"Error {error.Value}x, {error.Key}");
                 }
-            }
-
-            foreach (var download in downloads)
-            {
-                DrawProgressBar(download, output, totalWidth);
             }
 
             for (int i = 0; i < 2; i++)
@@ -533,19 +530,22 @@ public class DownloadService
         }
     }
     
-    static void DrawProgressBar(DownloadProgress progress, StringBuilder output, int consoleWidth, int barSize = 50)
+    private string DrawProgressBar(DownloadProgress? progress, int barSize = 50)
     {
+        if (progress == null || progress.ThreadDownloads == 0 || string.IsNullOrWhiteSpace(progress.Filename))
+        {
+            return string.Empty;
+        }
+        
         // Limit the file name display to 20 characters
         string displayFileName = progress.Filename.Length > 50 ? progress.Filename.Substring(progress.Filename.Length - 50, 50) : progress.Filename;
-        
-        
         
         // Build the progress bar
         int filledBars = (int)((progress.Progress / 100.0) * barSize);
         string progressBar = new string('=', filledBars) + new string('-', barSize - filledBars);
 
         // Write the progress bar to the console
-        output.AppendLine($"\rThread {progress.ThreadIndex}, Downloading [{progress.ThreadDownloadsIndex} / {progress.ThreadDownloads}] {displayFileName} [{progressBar}] {progress.Progress}%".PadRight(consoleWidth));
+        return $", Downloading [{progress.ThreadDownloadsIndex} / {progress.ThreadDownloads}] {displayFileName} [{progressBar}] {progress.Progress}%";
     }
     
     private bool EnoughDiskSpace(string directoryPath)

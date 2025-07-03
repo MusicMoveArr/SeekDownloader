@@ -13,15 +13,15 @@ public class FileSeekService
     public Dictionary<string, List<FileInfo>> ArtistMusicLibraries = new Dictionary<string, List<FileInfo>>();
     int maxFileSize = 50 * 1024 * 1024; //50MB
     
-    private string[] MediaFileExtensions = new string[]
-    {
+    public static string[] MediaFileExtensions =
+    [
         "flac",
         "m4a",
         "mp3",
         "wav",
         "aaif",
         "opus"
-    };
+    ];
 
     public string LastErrorMessage = string.Empty;
     
@@ -29,7 +29,8 @@ public class FileSeekService
         string songNameTarget, 
         string songArtistTarget, 
         SoulseekClient client,
-        List<string> filterOutNames)
+        List<string> filterOutNames,
+        List<string> searchFileExtensions)
     {
         LastErrorMessage = string.Empty;
         try
@@ -41,7 +42,7 @@ public class FileSeekService
                 fileFilter: (file) =>
                 {
                     string seekTrackName = GetSeekTrackName(file.Filename.ToLower());
-                    return MediaFileExtensions.Any(ext => file.Filename.EndsWith(ext)) &&
+                    return searchFileExtensions.Any(ext => file.Filename.EndsWith(ext)) &&
                            (filterOutNames == null || filterOutNames?.Any(name => file.Filename.ToLower().Contains(name)) == false) &&
                            //file.Filename.ToLower().Contains(songNameTarget.ToLower()) &&
                            

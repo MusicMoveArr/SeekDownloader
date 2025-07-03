@@ -98,6 +98,11 @@ public class RootCommand : ICommand
         EnvironmentVariable = "SEEK_OUTPUTSTATUS")]
     public bool OutputStatus { get; set; } = true;
     
+    [CommandOption("search-file-extensions",
+        Description = "Search for specific file extensions.",
+        EnvironmentVariable = "SEEK_FILEEXTENSIONS")]
+    public List<string> SearchFileExtensions { get; set; } = FileSeekService.MediaFileExtensions.ToList();
+    
     public async ValueTask ExecuteAsync(IConsole console)
     {
         FileSeekService fileSeeker = new FileSeekService();
@@ -184,7 +189,7 @@ public class RootCommand : ICommand
             downloadService.CurrentlySeeking = tempSearchTerm;
 
             var results = await fileSeeker.SearchAsync(tempSearchTerm, songNameTarget, songArtistTarget,
-                downloadService.SoulClient, FilterOutFileNames);
+                downloadService.SoulClient, FilterOutFileNames, SearchFileExtensions);
             
             if (!string.IsNullOrWhiteSpace(fileSeeker.LastErrorMessage) 
                 && !downloadService.SoulClient.State.ToString().Contains(SoulseekClientStates.Connected.ToString())
