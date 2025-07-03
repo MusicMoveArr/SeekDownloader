@@ -84,6 +84,46 @@ Artist - Trackname
 Artist - Album - Trackname
 ```
 
+# Docker Compose example
+Keep note of the multi-value seperator ":"
+
+This process will run every 6 hours based on the quartz cronjob format which includes seconds
+
+Environment variables with a missing "=" are a boolean, no value is needed, you set the "true" without "=true"
+
+```
+services:
+  seekdownloader:
+    image: musicmovearr/seekdownloader:latest
+    container_name: SeekDownloader
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - CRON=0 0 */6 ? * *
+      - SEEK_DOWNLOADFILEPATH=/Downloads
+      - SEEK_SOULSEEKLISTENPORT=12345
+      - SEEK_SOULSEEKUSERNAME=username_here
+      - SEEK_SOULSEEKPASSWORD=password_here
+      - SEEK_SEARCHDELIMETER=-
+      - SEEK_MUSICLIBRARY=/music
+      - SEEK_SEARCHTERM=
+      - SEEK_SEARCHFILEPATH=/Downloads/seek.txt
+      - SEEK_THREADCOUNT=10
+      - SEEK_GROUPEDDOWNLOADS
+      - SEEK_DOWNLOADSINGLES
+      - SEEK_UPDATEALBUMNAME
+      - SEEK_MUSICLIBRARIES=/music:/nfs_share/
+      - SEEK_FILTEROUTFILENAMES=live:concert:acoustic
+      - SEEK_CHECKTAGS
+      - SEEK_CHECKTAGSDELETE
+      - SEEK_OUTPUTSTATUS=false
+    volumes:
+      - ~/Music:/Music
+      - ~/nfs_share:/nfs_share
+      - ~/Downloads:/Downloads
+```
+
 # Build
 ## ArchLinux
 ```
