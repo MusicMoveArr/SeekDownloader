@@ -367,26 +367,25 @@ public class DownloadService
                                                         !string.IsNullOrWhiteSpace(field.Value) &&
                                                         Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), field.Value) >= 80);
                             }
-
-                            bool albumNameMatch = string.IsNullOrWhiteSpace(searchGroup.TargetAlbumName) || 
-                                                    (Fuzz.PartialTokenSetRatio(searchGroup.TargetAlbumName.ToLower(), track.Album.ToLower()) >= 80 &&
-                                                    FuzzyHelper.ExactNumberMatch(searchGroup.TargetAlbumName, track.Album));
                             
                             bool trackNameMatch = string.IsNullOrWhiteSpace(searchGroup.TargetSongName) || 
                                                   (Fuzz.PartialTokenSetRatio(searchGroup.TargetSongName.ToLower(), track.Title.ToLower()) >= 80 &&
                                                   FuzzyHelper.ExactNumberMatch(searchGroup.TargetSongName, track.Title));
                             
                             if (UpdateAlbumName && 
+                                artistNameMatch &&
+                                trackNameMatch &&
                                 !string.IsNullOrWhiteSpace(searchGroup.TargetAlbumName) && 
                                 !string.IsNullOrWhiteSpace(searchGroup.TargetSongName))
                             {
-                                if (artistNameMatch && trackNameMatch)
-                                {
-                                    track.AdditionalFields.Add("OriginalAlbumName", track.Album);
-                                    track.Album = searchGroup.TargetAlbumName;
-                                    track.Save();
-                                }
+                                track.AdditionalFields.Add("OriginalAlbumName", track.Album);
+                                track.Album = searchGroup.TargetAlbumName;
+                                track.Save();
                             }
+
+                            bool albumNameMatch = string.IsNullOrWhiteSpace(searchGroup.TargetAlbumName) || 
+                                                  (Fuzz.PartialTokenSetRatio(searchGroup.TargetAlbumName.ToLower(), track.Album.ToLower()) >= 80 &&
+                                                   FuzzyHelper.ExactNumberMatch(searchGroup.TargetAlbumName, track.Album));
 
                             if (CheckTags && (!artistNameMatch || 
                                               !trackNameMatch ||
