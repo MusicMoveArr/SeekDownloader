@@ -51,11 +51,12 @@ public class FileSeekService
                             file.Filename.ToLower().Contains($"//{songArtistTarget.ToLower()}//")) &&
                            
                            file.Size < maxFileSize &&
-                           (!string.IsNullOrWhiteSpace(seekTrackName) && 
-                            !string.IsNullOrWhiteSpace(songNameTarget) && 
-                            Fuzz.Ratio(songNameTarget.ToLower(), seekTrackName) > 70 &&
-                            FuzzyHelper.ExactNumberMatch(songNameTarget, seekTrackName)) &&
-                           !AlreadyInLibrary(songArtistTarget, file.Filename);
+                           (string.IsNullOrWhiteSpace(songNameTarget) ||
+                            (!string.IsNullOrWhiteSpace(seekTrackName) && 
+                             !string.IsNullOrWhiteSpace(songNameTarget) && 
+                             Fuzz.Ratio(songNameTarget.ToLower(), seekTrackName) > 70 &&
+                             FuzzyHelper.ExactNumberMatch(songNameTarget, seekTrackName))) &&
+                            !AlreadyInLibrary(songArtistTarget, file.Filename);
                 });
             
             var responses = await client.SearchAsync(searchQuery, options: options);
