@@ -392,7 +392,10 @@ public class DownloadService
                                               !albumNameMatch))
                             {
                                 IncorrectTags++;
-                                new FileInfo(realTargetFile).Delete();
+                                if (CheckTagsDelete)
+                                {
+                                    new FileInfo(realTargetFile).Delete();
+                                }
                                 continue;
                             }
                             
@@ -515,7 +518,12 @@ public class DownloadService
             {
                 foreach (var error in _errors.OrderByDescending(x => x.Value).Take(5))
                 {
-                    output.AppendLine($"Error {error.Value}x, {error.Key}");
+                    string errorMessage = $"Error {error.Value}, {error.Key}";
+                    if (errorMessage.Length > totalWidth)
+                    {
+                        errorMessage = errorMessage.Substring(0, totalWidth);
+                    }
+                    output.AppendLine(errorMessage);
                 }
             }
 

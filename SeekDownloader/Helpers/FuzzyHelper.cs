@@ -15,12 +15,12 @@ public class FuzzyHelper
         string regexPattern = "[0-9]*";
         var value1Match = Regex.Matches(value1, regexPattern)
             .Where(match => !string.IsNullOrWhiteSpace(match.Value))
-            .Select(match => int.Parse(match.Value))
+            .Select(match => long.Parse(match.Value))
             .ToList();
         
         var value2Match = Regex.Matches(value2, regexPattern)
             .Where(match => !string.IsNullOrWhiteSpace(match.Value))
-            .Select(match => int.Parse(match.Value))
+            .Select(match => long.Parse(match.Value))
             .ToList();
 
         if (value1Match.Count != value2Match.Count)
