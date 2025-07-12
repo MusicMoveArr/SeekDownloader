@@ -46,6 +46,8 @@ public class DownloadService
     public bool CheckTags { get; set; }
     public bool CheckTagsDelete { get; set; }
     public bool OutputStatus { get; set; }
+    
+    public bool AllowNonTaggedFiles { get; set; }
 
     public async Task ConnectAsync()
     {
@@ -113,6 +115,7 @@ public class DownloadService
             var downloadProgress = _threadDownloadProgress.FirstOrDefault(progress => progress.ThreadIndex == threadIndex);
             if (downloadProgress != null)
             {
+                downloadProgress.LastUpdatedAt = DateTime.Now;
                 action(downloadProgress);
             }
         }
@@ -134,12 +137,12 @@ public class DownloadService
         {
             try
             {
-                SetThreadStatus(threadIndex, status => status.ThreadStatus = $"[{DateTime.Now.ToString("HH:mm:ss")}] Waiting");
+                SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Waiting");
                 
                 SearchGroup? searchGroup = null;
                 if (!_searchGroups.TryDequeue(out searchGroup))
                 {
-                    SetThreadStatus(threadIndex, status => status.ThreadStatus = $"[{DateTime.Now.ToString("HH:mm:ss")}] Waiting");
+                    SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Waiting");
                     Thread.Sleep(2000);
                     continue;
                 }
@@ -157,7 +160,7 @@ public class DownloadService
                             Console.WriteLine($"Waiting for diskspace");
                         }
                         
-                        SetThreadStatus(threadIndex, status => status.ThreadStatus = $"[{DateTime.Now.ToString("HH:mm:ss")}] Waiting for diskspace");
+                        SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Waiting for diskspace");
                         Thread.Sleep(5000);
                     }
                     lock (_userErrors)
@@ -165,7 +168,7 @@ public class DownloadService
                         if (_userErrors.ContainsKey(downFile.Username) &&
                             _userErrors[downFile.Username] >= 10)
                         {
-                            SetThreadStatus(threadIndex, status => status.ThreadStatus = $"[{DateTime.Now.ToString("HH:mm:ss")}] Ignored user, {downFile.Username}");
+                            SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Ignored user, {downFile.Username}");
                             continue;
                         }
                     }
@@ -202,7 +205,7 @@ public class DownloadService
                             Console.WriteLine($"Error, {e.Message}");
                         }
                         
-                        SetThreadStatus(threadIndex, status => status.ThreadStatus = $"[{DateTime.Now.ToString("HH:mm:ss")}] Error, {e.Message}");
+                        SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Error, {e.Message}");
                         //continue;
                     }
                     
@@ -254,7 +257,7 @@ public class DownloadService
                             Console.WriteLine($"Downloading, '{downFile.Filename}'");
                         }
                         
-                        SetThreadStatus(threadIndex, status => status.ThreadStatus = $"[{DateTime.Now.ToString("HH:mm:ss")}] Downloading");
+                        SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Downloading");
 
                         double averageSpeed = 0;
                         Stopwatch stopwatch = Stopwatch.StartNew();
@@ -269,11 +272,6 @@ public class DownloadService
                             progressUpdated: (e) =>
                             {
                                 averageSpeed = e.Transfer.AverageSpeed;
-
-                                if (averageSpeed > 0)
-                                {
-                                    stopwatch.Reset();
-                                }
                                 
                                 SetThreadStatus(threadIndex, status => status.AverageDownloadSpeed = averageSpeed);
                                 
@@ -292,25 +290,31 @@ public class DownloadService
                                     
                                     if (_lastProgressReport[e.Transfer.Filename].Progress != roundedProgress)
                                     {
+                                        stopwatch.Reset();
                                         _lastProgressReport[e.Transfer.Filename].Progress = roundedProgress;
                                         _lastProgressReport[e.Transfer.Filename].LastUpdatedAt = DateTime.Now;
                                     }
                                 }
                             }));
 
+                        cancellationToken.CancelAfter(TimeSpan.FromMinutes(5));
                         
-                        //while (!downloadTask.IsCompleted && !downloadTask.IsFaulted)
-                        //{
-                        //    Thread.Sleep(1000);
-                        //    //Task.WhenAny(Task.Delay(TimeSpan.FromSeconds(1)), downloadTask).GetAwaiter().GetResult();
-                        //    if (stopwatch.Elapsed.TotalSeconds > 30)
-                        //    {
-                        //        cancellationToken.Cancel();
-                        //        break;
-                        //    }
-                        //}
-                
-                        Task.WhenAny(downloadTask, Task.Delay(TimeSpan.FromSeconds(300))).GetAwaiter().GetResult();
+                        while (!downloadTask.IsCompleted && !downloadTask.IsFaulted)
+                        {
+                            Thread.Sleep(1000);
+                            if (stopwatch.Elapsed.TotalSeconds > 30)
+                            {
+                                try
+                                {
+                                    cancellationToken.Cancel();
+                                }
+                                catch (Exception e) { }
+                                break;
+                            }
+                        }
+
+                        //cancellationToken.CancelAfter(TimeSpan.FromMinutes(5));//?
+                        //Task.WhenAny(downloadTask, Task.Delay(TimeSpan.FromSeconds(300))).GetAwaiter().GetResult();
 
                         if (downloadTask.IsFaulted || downloadTask.Exception != null)
                         {
@@ -318,7 +322,7 @@ public class DownloadService
                             {
                                 Console.WriteLine($"Download failed for '{downFile.Filename}'");
                             }
-                            SetThreadStatus(threadIndex, status => status.ThreadStatus = $"[{DateTime.Now.ToString("HH:mm:ss")}] Download failed");
+                            SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Download failed");
                             lock (_errors)
                             {
                                 if (!_errors.ContainsKey(downloadTask.Exception.Message))
@@ -342,7 +346,6 @@ public class DownloadService
                         if (!downloadTask.IsCompleted)
                         {
                             //Console.WriteLine($"Download canceled for {targetFile}");
-                            cancellationToken.Token.ThrowIfCancellationRequested();  // Signal cancellation
                             continue;
                         }
 
@@ -387,6 +390,19 @@ public class DownloadService
                                                   (Fuzz.PartialTokenSetRatio(searchGroup.TargetAlbumName.ToLower(), track.Album.ToLower()) >= 80 &&
                                                    FuzzyHelper.ExactNumberMatch(searchGroup.TargetAlbumName, track.Album));
 
+                            if (AllowNonTaggedFiles &&
+                                string.IsNullOrWhiteSpace(track.Artist) &&
+                                string.IsNullOrWhiteSpace(track.AlbumArtist) &&
+                                string.IsNullOrWhiteSpace(track.SortArtist) &&
+                                string.IsNullOrWhiteSpace(track.SortAlbumArtist) &&
+                                string.IsNullOrWhiteSpace(track.Album) &&
+                                string.IsNullOrWhiteSpace(track.Title))
+                            {
+                                artistNameMatch = true;
+                                trackNameMatch = true;
+                                albumNameMatch = true;
+                            }
+                            
                             if (CheckTags && (!artistNameMatch || 
                                               !trackNameMatch ||
                                               !albumNameMatch))
@@ -431,7 +447,7 @@ public class DownloadService
             }
             catch (Exception e)
             {
-                SetThreadStatus(threadIndex, status => status.ThreadStatus = $"[{DateTime.Now.ToString("HH:mm:ss")}] Error, {e.StackTrace}");
+                SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Error, {e.StackTrace}");
                 lock (_errors)
                 {
                     if (!string.IsNullOrWhiteSpace(e.Message))
@@ -510,7 +526,7 @@ public class DownloadService
                     var downloadProgress = downloads.FirstOrDefault(d => d.ThreadIndex == progress.ThreadIndex);
                     
                     int downloadSpeed = (int)(progress.AverageDownloadSpeed / 1000);
-                    output.AppendLine($"Thread {progress.ThreadIndex}: {progress.ThreadStatus}, Download speed: {downloadSpeed}KBps{DrawProgressBar(downloadProgress)}".PadRight(totalWidth));
+                    output.AppendLine($"Thread {progress.ThreadIndex}: [{progress.LastUpdatedAt.ToString("HH:mm:ss")}] {progress.ThreadStatus}, Download speed: {downloadSpeed}KBps{DrawProgressBar(downloadProgress)}".PadRight(totalWidth));
                 }
             }
             

@@ -1,6 +1,8 @@
 using CliFx;
 using CliFx.Attributes;
 using CliFx.Infrastructure;
+using ListRandomizer;
+using SeekDownloader.Helpers;
 using SeekDownloader.Services;
 using Soulseek;
 
@@ -83,6 +85,11 @@ public class RootCommand : ICommand
         EnvironmentVariable = "SEEK_FILTEROUTFILENAMES")]
     public List<string> FilterOutFileNames { get; set; } = null;
     
+    [CommandOption("allow-non-tagged-files", 
+        Description = "Allow non-tagged files, original music-files do not contain tags either.", 
+        EnvironmentVariable = "SEEK_ALLOWNONTAGGEDFILES")]
+    public bool AllowNonTaggedFiles { get; set; } = false;
+    
     [CommandOption("check-tags", 
         Description = "Check the tags if we downloaded the correct track.", 
         EnvironmentVariable = "SEEK_CHECKTAGS")]
@@ -117,6 +124,7 @@ public class RootCommand : ICommand
         downloadService.CheckTags = CheckTags;
         downloadService.CheckTagsDelete = CheckTagsDelete;
         downloadService.OutputStatus = OutputStatus;
+        downloadService.AllowNonTaggedFiles = AllowNonTaggedFiles;
         
         if (!string.IsNullOrWhiteSpace(MusicLibrary))
         {
@@ -147,10 +155,10 @@ public class RootCommand : ICommand
             string songNameTarget = string.Empty;
             string songAlbumTarget = string.Empty;
             string songArtistTarget = string.Empty;
-            
+
             if (split.Length > 2)
             {
-                songNameTarget = string.Join(SearchDelimeter,split.Skip(2).ToList());
+                songNameTarget = string.Join(SearchDelimeter, split.Skip(2).ToList());
                 songAlbumTarget = split.Skip(1).First();
                 songArtistTarget = split.First();
             }
@@ -174,30 +182,32 @@ public class RootCommand : ICommand
             {
                 reconstructedName.Add(songArtistTarget);
             }
+
             if (!string.IsNullOrWhiteSpace(songAlbumTarget))
             {
                 reconstructedName.Add(songAlbumTarget);
             }
+
             if (!string.IsNullOrWhiteSpace(songNameTarget))
             {
                 reconstructedName.Add(songNameTarget);
             }
 
             string tempSearchTerm = string.Join(" - ", reconstructedName);
-            
+
             downloadService.SeekCount++;
             downloadService.CurrentlySeeking = tempSearchTerm;
 
             var results = await fileSeeker.SearchAsync(tempSearchTerm, songNameTarget, songArtistTarget,
                 downloadService.SoulClient, FilterOutFileNames, SearchFileExtensions);
-            
-            if (!string.IsNullOrWhiteSpace(fileSeeker.LastErrorMessage) 
+
+            if (!string.IsNullOrWhiteSpace(fileSeeker.LastErrorMessage)
                 && !downloadService.SoulClient.State.ToString().Contains(SoulseekClientStates.Connected.ToString())
                 && !downloadService.SoulClient.State.ToString().Contains(SoulseekClientStates.LoggedIn.ToString()))
             {
                 await downloadService.ConnectAsync();
             }
-            
+
             if (results.Any())
             {
                 downloadService.SeekSuccessCount++;
@@ -207,7 +217,7 @@ public class RootCommand : ICommand
             {
                 Console.WriteLine($"Seeked: '{tempSearchTerm}, Found {results.Count} files");
             }
-            
+
             if (results.Count > 0)
             {
                 if (GroupedDownloads)
