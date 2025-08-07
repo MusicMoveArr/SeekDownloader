@@ -193,7 +193,27 @@ public class FileSeekService
         return string.Empty;
     }
     
-    private bool AlreadyInLibrary(string artistName, string fileName, int musicLibraryMatch)
+    public bool AlreadyInLibraryByTrack(string artistName, string trackName, int musicLibraryMatch)
+    {
+        if (ArtistMusicLibraries.ContainsKey(artistName))
+        {
+            List<FileInfo> musicFiles = ArtistMusicLibraries[artistName];
+            
+            var similar = musicFiles
+                .Select(musicFile => GetSeekTrackName(musicFile.Name))
+                .Where(musicFile => !string.IsNullOrWhiteSpace(musicFile))
+                .Where(musicFile => FuzzyHelper.ExactNumberMatch(trackName, musicFile.ToLower()))
+                .FirstOrDefault(musicFile => Fuzz.Ratio(trackName.ToLower(), musicFile.ToLower()) > musicLibraryMatch);
+
+            if (similar != null)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    public bool AlreadyInLibrary(string artistName, string fileName, int musicLibraryMatch)
     {
         if (ArtistMusicLibraries.ContainsKey(artistName))
         {

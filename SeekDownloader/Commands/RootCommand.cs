@@ -115,6 +115,11 @@ public class RootCommand : ICommand
         EnvironmentVariable = "SEEK_MUSICLIBRARY_MATCH")]
     public int MusicLibraryMatch { get; set; } = 50;
     
+    [CommandOption("music-library-quick-match",
+        Description = "Quickly try to find only the missing tracks from the search.",
+        EnvironmentVariable = "SEEK_MUSICLIBRARY_MATCH")]
+    public bool MusicLibraryQuickMatch { get; set; } = false;
+    
     public async ValueTask ExecuteAsync(IConsole console)
     {
         FileSeekService fileSeeker = new FileSeekService();
@@ -202,6 +207,16 @@ public class RootCommand : ICommand
 
             downloadService.SeekCount++;
             downloadService.CurrentlySeeking = tempSearchTerm;
+
+            if (MusicLibraryQuickMatch && !string.IsNullOrWhiteSpace(songNameTarget))
+            {
+                fileSeeker.AddToCache(songArtistTarget);
+                if (fileSeeker.AlreadyInLibraryByTrack(songArtistTarget, songNameTarget, MusicLibraryMatch))
+                {
+                    downloadService.AlreadyDownloadedSkipCount++;
+                    continue;
+                }
+            }
 
             var results = await fileSeeker.SearchAsync(tempSearchTerm, songNameTarget, songArtistTarget,
                 downloadService.SoulClient, FilterOutFileNames, SearchFileExtensions, MusicLibraryMatch);
