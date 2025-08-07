@@ -110,6 +110,11 @@ public class RootCommand : ICommand
         EnvironmentVariable = "SEEK_FILEEXTENSIONS")]
     public List<string> SearchFileExtensions { get; set; } = FileSeekService.MediaFileExtensions.ToList();
     
+    [CommandOption("music-library-match",
+        Description = "Set the hitrate percentage against your own music library, if it hits it will skip the download.",
+        EnvironmentVariable = "SEEK_MUSICLIBRARY_MATCH")]
+    public int MusicLibraryMatch { get; set; } = 50;
+    
     public async ValueTask ExecuteAsync(IConsole console)
     {
         FileSeekService fileSeeker = new FileSeekService();
@@ -199,7 +204,7 @@ public class RootCommand : ICommand
             downloadService.CurrentlySeeking = tempSearchTerm;
 
             var results = await fileSeeker.SearchAsync(tempSearchTerm, songNameTarget, songArtistTarget,
-                downloadService.SoulClient, FilterOutFileNames, SearchFileExtensions);
+                downloadService.SoulClient, FilterOutFileNames, SearchFileExtensions, MusicLibraryMatch);
 
             if (!string.IsNullOrWhiteSpace(fileSeeker.LastErrorMessage)
                 && !downloadService.SoulClient.State.ToString().Contains(SoulseekClientStates.Connected.ToString())
