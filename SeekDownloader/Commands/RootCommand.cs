@@ -117,7 +117,7 @@ public class RootCommand : ICommand
     
     [CommandOption("music-library-quick-match",
         Description = "Quickly try to find only the missing tracks from the search.",
-        EnvironmentVariable = "SEEK_MUSICLIBRARY_MATCH")]
+        EnvironmentVariable = "SEEK_MUSICLIBRARY_QUICK_MATCH")]
     public bool MusicLibraryQuickMatch { get; set; } = false;
     
     public async ValueTask ExecuteAsync(IConsole console)
