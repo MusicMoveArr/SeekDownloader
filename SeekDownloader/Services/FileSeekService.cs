@@ -57,7 +57,7 @@ public class FileSeekService
                              !string.IsNullOrWhiteSpace(songNameTarget) && 
                              Fuzz.Ratio(songNameTarget.ToLower(), seekTrackName) > 70 &&
                              FuzzyHelper.ExactNumberMatch(songNameTarget, seekTrackName))) &&
-                            !AlreadyInLibrary(songArtistTarget, file.Filename, musicLibraryMatch);
+                            !AlreadyInLibrary(songArtistTarget, file.Filename, musicLibraryMatch, searchFileExtensions);
                 });
             
             var responses = await client.SearchAsync(searchQuery, options: options);
@@ -193,17 +193,26 @@ public class FileSeekService
         return string.Empty;
     }
     
-    public bool AlreadyInLibraryByTrack(string artistName, string trackName, int musicLibraryMatch)
+    public bool AlreadyInLibraryByTrack(
+        string artistName, 
+        string trackName, 
+        int musicLibraryMatch, 
+        List<string> searchFileExtensions)
     {
         if (ArtistMusicLibraries.ContainsKey(artistName))
         {
             List<FileInfo> musicFiles = ArtistMusicLibraries[artistName];
             
             var similar = musicFiles
-                .Select(musicFile => GetSeekTrackName(musicFile.Name))
-                .Where(musicFile => !string.IsNullOrWhiteSpace(musicFile))
-                .Where(musicFile => FuzzyHelper.ExactNumberMatch(trackName, musicFile.ToLower()))
-                .FirstOrDefault(musicFile => Fuzz.Ratio(trackName.ToLower(), musicFile.ToLower()) > musicLibraryMatch);
+                .Select(musicFile => new
+                {
+                    TrackName = GetSeekTrackName(musicFile.Name),
+                    Path = musicFile.FullName,
+                })
+                .Where(musicFile => !string.IsNullOrWhiteSpace(musicFile.TrackName))
+                .Where(musicFile => !searchFileExtensions.Any() || searchFileExtensions.Any(extension => musicFile.Path.EndsWith(extension)))
+                .Where(musicFile => FuzzyHelper.ExactNumberMatch(trackName, musicFile.TrackName.ToLower()))
+                .FirstOrDefault(musicFile => Fuzz.Ratio(trackName.ToLower(), musicFile.TrackName.ToLower()) > musicLibraryMatch);
 
             if (similar != null)
             {
@@ -213,7 +222,11 @@ public class FileSeekService
         return false;
     }
     
-    public bool AlreadyInLibrary(string artistName, string fileName, int musicLibraryMatch)
+    public bool AlreadyInLibrary(
+        string artistName, 
+        string fileName, 
+        int musicLibraryMatch, 
+        List<string> searchFileExtensions)
     {
         if (ArtistMusicLibraries.ContainsKey(artistName))
         {
@@ -228,10 +241,16 @@ public class FileSeekService
             }
             
             var similar = musicFiles
-                .Select(musicFile => GetSeekTrackName(musicFile.Name))
-                .Where(musicFile => !string.IsNullOrWhiteSpace(musicFile))
-                .Where(musicFile => FuzzyHelper.ExactNumberMatch(targetFile, musicFile.ToLower()))
-                .FirstOrDefault(musicFile => Fuzz.Ratio(targetFile.ToLower(), musicFile.ToLower()) > musicLibraryMatch);
+                .Select(musicFile => new
+                {
+                    TrackName = GetSeekTrackName(musicFile.Name),
+                    Name = musicFile.Name,
+                    Path = musicFile.FullName,
+                })
+                .Where(musicFile => !string.IsNullOrWhiteSpace(musicFile.TrackName))
+                .Where(musicFile => !searchFileExtensions.Any() || searchFileExtensions.Any(extension => musicFile.Path.EndsWith(extension)))
+                .Where(musicFile => FuzzyHelper.ExactNumberMatch(targetFile, musicFile.TrackName.ToLower()))
+                .FirstOrDefault(musicFile => Fuzz.Ratio(targetFile.ToLower(), musicFile.TrackName.ToLower()) > musicLibraryMatch);
 
             if (similar != null)
             {

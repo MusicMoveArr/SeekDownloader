@@ -211,7 +211,7 @@ public class RootCommand : ICommand
             if (MusicLibraryQuickMatch && !string.IsNullOrWhiteSpace(songNameTarget))
             {
                 fileSeeker.AddToCache(songArtistTarget);
-                if (fileSeeker.AlreadyInLibraryByTrack(songArtistTarget, songNameTarget, MusicLibraryMatch))
+                if (fileSeeker.AlreadyInLibraryByTrack(songArtistTarget, songNameTarget, MusicLibraryMatch, SearchFileExtensions))
                 {
                     downloadService.AlreadyDownloadedSkipCount++;
                     continue;
