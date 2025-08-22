@@ -439,8 +439,8 @@ public class DownloadService
                             else
                             {
                                 fileStream.Flush();
-                                fileStream.Dispose();
                             }
+                            fileStream.Dispose();
 
                             lock (_toIgnoreFiles)
                             {
