@@ -11,7 +11,6 @@ public class FileSeekService
 {
     public List<string> MusicLibraries = new List<string>();
     public Dictionary<string, List<FileInfo>> ArtistMusicLibraries = new Dictionary<string, List<FileInfo>>();
-    int maxFileSize = 50 * 1024 * 1024; //50MB
     
     public static string[] MediaFileExtensions =
     [
@@ -31,7 +30,8 @@ public class FileSeekService
         SoulseekClient client,
         List<string> filterOutNames,
         List<string> searchFileExtensions,
-        int musicLibraryMatch)
+        int musicLibraryMatch,
+        int maxFileSize)
     {
         LastErrorMessage = string.Empty;
         try
@@ -51,7 +51,7 @@ public class FileSeekService
                             file.Filename.ToLower().Contains($"\\{songArtistTarget.ToLower()}\\") ||
                             file.Filename.ToLower().Contains($"//{songArtistTarget.ToLower()}//")) &&
                            
-                           file.Size < maxFileSize &&
+                           file.Size < (maxFileSize * 1024 * 1024) &&
                            (string.IsNullOrWhiteSpace(songNameTarget) ||
                             (!string.IsNullOrWhiteSpace(seekTrackName) && 
                              !string.IsNullOrWhiteSpace(songNameTarget) && 

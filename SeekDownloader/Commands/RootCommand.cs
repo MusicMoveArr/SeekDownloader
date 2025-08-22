@@ -120,6 +120,11 @@ public class RootCommand : ICommand
         EnvironmentVariable = "SEEK_MUSICLIBRARY_QUICK_MATCH")]
     public bool MusicLibraryQuickMatch { get; set; } = false;
     
+    [CommandOption("max-file-size",
+        Description = "Set the max file size to download in Megabytes (MB).",
+        EnvironmentVariable = "SEEK_MAX_FILE_SIZE")]
+    public int MaxFileSize { get; set; } = 50;
+    
     public async ValueTask ExecuteAsync(IConsole console)
     {
         FileSeekService fileSeeker = new FileSeekService();
@@ -219,7 +224,7 @@ public class RootCommand : ICommand
             }
 
             var results = await fileSeeker.SearchAsync(tempSearchTerm, songNameTarget, songArtistTarget,
-                downloadService.SoulClient, FilterOutFileNames, SearchFileExtensions, MusicLibraryMatch);
+                downloadService.SoulClient, FilterOutFileNames, SearchFileExtensions, MusicLibraryMatch, MaxFileSize);
 
             if (!string.IsNullOrWhiteSpace(fileSeeker.LastErrorMessage)
                 && !downloadService.SoulClient.State.ToString().Contains(SoulseekClientStates.Connected.ToString())
