@@ -266,7 +266,7 @@ public class DownloadService
                         Stream fileStream;
                         Task<Transfer>? downloadTask;
                         
-                        bool isInMemoryDownload = InMemoryDownloads && InMemoryDownloadMaxSize * 1024 * 1024 < downFile.Size;
+                        bool isInMemoryDownload = InMemoryDownloads && downFile.Size < InMemoryDownloadMaxSize * 1024 * 1024;
                         SetThreadStatus(threadIndex, status => status.IsInMemoryDownload = isInMemoryDownload);
 
                         if (isInMemoryDownload)
