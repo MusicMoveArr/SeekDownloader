@@ -125,6 +125,16 @@ public class RootCommand : ICommand
         EnvironmentVariable = "SEEK_MAX_FILE_SIZE")]
     public int MaxFileSize { get; set; } = 50;
     
+    [CommandOption("in-memory-downloads",
+        Description = "Store the downloads temporarily in memory, only successful downloads are written to disk.",
+        EnvironmentVariable = "SEEK_IN_MEMORY_DOWNLOADS")]
+    public bool InMemoryDownloads { get; set; } = false;
+    
+    [CommandOption("in-memory-downloads-max-size",
+        Description = "Store the downloads temporarily in memory only if smaller then X MB else the disk is used as normal.",
+        EnvironmentVariable = "SEEK_IN_MEMORY_DOWNLOADS_MAX_SIZE")]
+    public int InMemoryDownloadMaxSize { get; set; } = 50;
+    
     public async ValueTask ExecuteAsync(IConsole console)
     {
         FileSeekService fileSeeker = new FileSeekService();
@@ -140,6 +150,8 @@ public class RootCommand : ICommand
         downloadService.CheckTagsDelete = CheckTagsDelete;
         downloadService.OutputStatus = OutputStatus;
         downloadService.AllowNonTaggedFiles = AllowNonTaggedFiles;
+        downloadService.InMemoryDownloads = InMemoryDownloads;
+        downloadService.InMemoryDownloadMaxSize = InMemoryDownloadMaxSize;
         
         if (!string.IsNullOrWhiteSpace(MusicLibrary))
         {

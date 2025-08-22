@@ -7,6 +7,7 @@ using SeekDownloader.Helpers;
 using Soulseek;
 using Soulseek.Diagnostics;
 using Directory = System.IO.Directory;
+using File = System.IO.File;
 
 namespace SeekDownloader.Services;
 
@@ -48,6 +49,8 @@ public class DownloadService
     public bool OutputStatus { get; set; }
     
     public bool AllowNonTaggedFiles { get; set; }
+    public bool InMemoryDownloads { get; set; }
+    public int InMemoryDownloadMaxSize { get; set; }
 
     public async Task ConnectAsync()
     {
@@ -213,6 +216,11 @@ public class DownloadService
                     string tempTargetFile = Path.Combine(targetFolder, $"{fileName}.bak");
                     string realTargetFile = Path.Combine(targetFolder, fileName);
 
+                    if (File.Exists(tempTargetFile))
+                    {
+                        File.Delete(tempTargetFile);
+                    }
+
                     lock (_toIgnoreFiles)
                     {
                         if (_toIgnoreFiles.Contains(fileName.ToLower()))
@@ -245,11 +253,6 @@ public class DownloadService
             
                     CancellationTokenSource cancellationToken = new CancellationTokenSource();
 
-                    if (!Directory.Exists(targetFolder))
-                    {
-                        Directory.CreateDirectory(targetFolder);
-                    }
-                    
                     try
                     {
                         if (!OutputStatus)
@@ -259,43 +262,46 @@ public class DownloadService
                         
                         SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Downloading");
 
-                        double averageSpeed = 0;
                         Stopwatch stopwatch = Stopwatch.StartNew();
+                        Stream fileStream;
+                        Task<Transfer>? downloadTask;
                         
-                        var downloadTask = this.SoulClient.DownloadAsync(
+                        bool isInMemoryDownload = InMemoryDownloads && InMemoryDownloadMaxSize * 1024 * 1024 < downFile.Size;
+                        SetThreadStatus(threadIndex, status => status.IsInMemoryDownload = isInMemoryDownload);
+
+                        if (isInMemoryDownload)
+                        {
+                            fileStream = new MemoryStream();
+                        }
+                        else
+                        {
+                            if (!Directory.Exists(targetFolder))
+                            {
+                                Directory.CreateDirectory(targetFolder);
+                            }
+                            
+                            if (File.Exists(tempTargetFile))
+                            {
+                                File.Delete(tempTargetFile);
+                            }
+                            fileStream = new FileStream(tempTargetFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
+                        }
+
+                        downloadTask = this.SoulClient.DownloadAsync(
                             username: downFile.Username, 
-                            remoteFilename: downFile.Filename, 
-                            tempTargetFile, 
+                            remoteFilename: downFile.Filename,
+                            async () => fileStream, 
                             size:  downFile.Size, 
                             cancellationToken: cancellationToken.Token,
                             options: new TransferOptions(stateChanged: (e) => { },
                             progressUpdated: (e) =>
-                            {
-                                averageSpeed = e.Transfer.AverageSpeed;
-                                
-                                SetThreadStatus(threadIndex, status => status.AverageDownloadSpeed = averageSpeed);
-                                
-                                lock (_lastProgressReport)
-                                {
-                                    int roundedProgress = (int)Math.Round(e.Transfer.PercentComplete);
-                                    if (!_lastProgressReport.ContainsKey(e.Transfer.Filename))
-                                    {
-                                        _lastProgressReport[e.Transfer.Filename] = new DownloadProgress(e.Transfer.Filename, roundedProgress);
-                                    }
-                                    
-                                    _lastProgressReport[e.Transfer.Filename].ThreadIndex = threadIndex;
-                                    _lastProgressReport[e.Transfer.Filename].ThreadDownloads = possibleDownloadResults.Count;
-                                    _lastProgressReport[e.Transfer.Filename].ThreadDownloadsIndex = downloadIndex;
-                                    _lastProgressReport[e.Transfer.Filename].AverageDownloadSpeed = e.Transfer.AverageSpeed;
-                                    
-                                    if (_lastProgressReport[e.Transfer.Filename].Progress != roundedProgress)
-                                    {
-                                        stopwatch.Reset();
-                                        _lastProgressReport[e.Transfer.Filename].Progress = roundedProgress;
-                                        _lastProgressReport[e.Transfer.Filename].LastUpdatedAt = DateTime.Now;
-                                    }
-                                }
-                            }));
+                                ProgressUpdatedCallback(
+                                    e.PreviousBytesTransferred, 
+                                    e.Transfer,
+                                    stopwatch,
+                                    threadIndex,
+                                    downloadIndex,
+                                    possibleDownloadResults)));
 
                         cancellationToken.CancelAfter(TimeSpan.FromMinutes(5));
                         
@@ -312,9 +318,6 @@ public class DownloadService
                                 break;
                             }
                         }
-
-                        //cancellationToken.CancelAfter(TimeSpan.FromMinutes(5));//?
-                        //Task.WhenAny(downloadTask, Task.Delay(TimeSpan.FromSeconds(300))).GetAwaiter().GetResult();
 
                         if (downloadTask.IsFaulted || downloadTask.Exception != null)
                         {
@@ -349,15 +352,22 @@ public class DownloadService
                             continue;
                         }
 
-                        FileInfo tempTargetFileInfo = new FileInfo(tempTargetFile);
-                        if (downloadTask.IsCompleted &&
-                            tempTargetFileInfo.Exists &&
-                            tempTargetFileInfo.Length == downFile.Size)
-                        {
-                            tempTargetFileInfo.MoveTo(realTargetFile, true);
+                        fileStream.Position = 0;
 
+                        if (downloadTask.IsCompleted &&
+                            fileStream.Length == downFile.Size)
+                        {
+                            if (!Directory.Exists(targetFolder))
+                            {
+                                Directory.CreateDirectory(targetFolder);
+                            }
                             
-                            Track track = new Track(realTargetFile);
+                            if (!isInMemoryDownload)
+                            {
+                                File.Move(tempTargetFile, realTargetFile, true);
+                            }
+
+                            Track track = new Track(fileStream);
                             bool artistNameMatch = Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), track.Artist.ToLower()) >= 80 ||
                                                    Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), track.AlbumArtist.ToLower()) >= 80 ||
                                                    Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), track.SortArtist.ToLower()) >= 80 ||
@@ -408,13 +418,30 @@ public class DownloadService
                                               !albumNameMatch))
                             {
                                 IncorrectTags++;
-                                if (CheckTagsDelete)
+                                if (CheckTagsDelete && !isInMemoryDownload)
                                 {
                                     new FileInfo(realTargetFile).Delete();
                                 }
                                 continue;
                             }
-                            
+
+                            if (isInMemoryDownload)
+                            {
+                                using (FileStream targetStream = new FileStream(realTargetFile, FileMode.OpenOrCreate,
+                                           FileAccess.ReadWrite, FileShare.ReadWrite))
+                                {
+                                    targetStream.Position = 0;
+                                    fileStream.Position = 0;
+                                    
+                                    fileStream.CopyTo(targetStream);
+                                }
+                            }
+                            else
+                            {
+                                fileStream.Flush();
+                                fileStream.Dispose();
+                            }
+
                             lock (_toIgnoreFiles)
                             {
                                 _toIgnoreFiles.Add(fileName);
@@ -456,6 +483,38 @@ public class DownloadService
                         _errors[e.Message]++;
                     }
                 }
+            }
+        }
+    }
+
+    private void ProgressUpdatedCallback(
+        long previousBytesTransferred, 
+        Transfer transfer, 
+        Stopwatch stopwatch, 
+        int threadIndex, 
+        int downloadIndex,
+        List<SearchResult> possibleDownloadResults)
+    {       
+        SetThreadStatus(threadIndex, status => status.AverageDownloadSpeed = transfer.AverageSpeed);
+                                
+        lock (_lastProgressReport)
+        {
+            int roundedProgress = (int)Math.Round(transfer.PercentComplete);
+            if (!_lastProgressReport.ContainsKey(transfer.Filename))
+            {
+                _lastProgressReport[transfer.Filename] = new DownloadProgress(transfer.Filename, roundedProgress);
+            }
+                                    
+            _lastProgressReport[transfer.Filename].ThreadIndex = threadIndex;
+            _lastProgressReport[transfer.Filename].ThreadDownloads = possibleDownloadResults.Count;
+            _lastProgressReport[transfer.Filename].ThreadDownloadsIndex = downloadIndex;
+            _lastProgressReport[transfer.Filename].AverageDownloadSpeed = transfer.AverageSpeed;
+                                    
+            if (_lastProgressReport[transfer.Filename].Progress != roundedProgress)
+            {
+                stopwatch.Reset();
+                _lastProgressReport[transfer.Filename].Progress = roundedProgress;
+                _lastProgressReport[transfer.Filename].LastUpdatedAt = DateTime.Now;
             }
         }
     }
@@ -526,7 +585,7 @@ public class DownloadService
                     var downloadProgress = downloads.FirstOrDefault(d => d.ThreadIndex == progress.ThreadIndex);
                     
                     int downloadSpeed = (int)(progress.AverageDownloadSpeed / 1000);
-                    output.AppendLine($"Thread {progress.ThreadIndex}: [{progress.LastUpdatedAt.ToString("HH:mm:ss")}] {progress.ThreadStatus}, Download speed: {downloadSpeed}KBps{DrawProgressBar(downloadProgress)}".PadRight(totalWidth));
+                    output.AppendLine($"Thread {progress.ThreadIndex}: [{progress.LastUpdatedAt.ToString("HH:mm:ss")}] {progress.ThreadStatus}, {(progress.IsInMemoryDownload ? "InMemory" : "Disk")}, Speed: {downloadSpeed}KBps{DrawProgressBar(downloadProgress)}".PadRight(totalWidth));
                 }
             }
             
