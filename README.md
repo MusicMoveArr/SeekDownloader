@@ -28,16 +28,26 @@ dotnet SeekDownloader.dll \
 | --soulseek-listen-port | -p | Soulseek listen port (used for portforwarding). (Required) | -p 12345 |
 | --soulseek-username | -u | Soulseek username for login. (Required) | -u "John" |
 | --soulseek-password | -P | Soulseek password for login. (Required) | -P "Doe" |
-| --music-library | -m | Music Library path to use to check for existing local songs. (Required) | -m "~/Music" |
 | --search-term | -s | Search term used to search for music use the order, Artist - Album - Track. | -s "deadmau5" |
 | --search-file-path | -S | Search term(s) used to search for music use from a file. | -S "./search-songs.txt" |
 | --thread-count | -t | Download threads to use. (Default: 10) | -t 5 |
+| --music-library | -m | Music Library path to use to check for existing local songs. (Required) | -m "~/Music" |
 | --music-libraries | -M | Multiple Music Library path(s) to use to check for existing local songs. | -m ["\~/Music", "~/nfs_share_Music"] |
-| --filter-out-file-names | -F | Filter out names to ignore for downloads. | -F ["jazz", "live", "concert", "classic"] |
+| --filter-out-file-names | -F | Filter out names to ignore for downloads, seperated by space in commandline, seperated by ':' in docker/environment variable. | -F jazz live concert classic |
 | --grouped-downloads | -G | Put each search into his own download thread. | -G |
 | --download-singles | -DS | When combined with Grouped Downloads, it will quit downloading the entire group after 1 song finished downloading. | -DS |
 | --search-delimeter | -SD | Search term(s) delimeter is used to take the correct Artist, Album, Track names from your Search Term(s). | -SD |
 | --update-album-name | -UA | Update the Album name's tag by your search term, only updates if Trackname matches as well for +90%. | -UA |
+| --allow-non-tagged-files |  | Allow non-tagged files, original music-files do not contain tags either. | true |
+| --check-tags |  | Check the tags if we downloaded the correct track. | true |
+| --check-tags-delete |  | If the tags do not match the search, delete after download. | true |
+| --output-status |  | Output the overall status and of each thread. | true |
+| --search-file-extensions |  | Search for specific file extensions, seperated by space in commandline, seperated by ':' in docker/environment variable. | wav flac opus |
+| --music-library-match |  | Set the hitrate percentage against your own music library, if it hits it will skip the download. | 50 |
+| --music-library-quick-match |  | Quickly try to find only the missing tracks from the search. | true |
+| --max-file-size |  | Set the max file size to download in Megabytes (MB). | 50 |
+| --in-memory-downloads |  | Store the downloads temporarily in memory, only successful downloads are written to disk. | true |
+| --in-memory-downloads-max-size |  | Store the downloads temporarily in memory only if smaller then X MB else the disk is used as normal. | 100 |
 
 # How MusicLibrary Filtering works
 When selecting your music library(ies) by -m/-M to filter out downloads/music we already own, we will use the following regex'es on soulseek files
@@ -97,6 +107,7 @@ services:
     image: musicmovearr/seekdownloader:latest
     container_name: SeekDownloader
     restart: unless-stopped
+    user: "1000:1000"
     environment:
       - PUID=1000
       - PGID=1000
@@ -110,14 +121,21 @@ services:
       - SEEK_SEARCHTERM=
       - SEEK_SEARCHFILEPATH=/Downloads/seek.txt
       - SEEK_THREADCOUNT=10
-      - SEEK_GROUPEDDOWNLOADS
-      - SEEK_DOWNLOADSINGLES
-      - SEEK_UPDATEALBUMNAME
+      - SEEK_GROUPEDDOWNLOADS=true
+      - SEEK_DOWNLOADSINGLES=true
+      - SEEK_UPDATEALBUMNAME=true
       - SEEK_MUSICLIBRARIES=/music:/nfs_share/
       - SEEK_FILTEROUTFILENAMES=live:concert:acoustic
-      - SEEK_CHECKTAGS
-      - SEEK_CHECKTAGSDELETE
+      - SEEK_CHECKTAGS=true
+      - SEEK_CHECKTAGSDELETE=true
       - SEEK_OUTPUTSTATUS=false
+      - SEEK_ALLOWNONTAGGEDFILES=false
+      - SEEK_FILEEXTENSIONS=opus:flac:wav
+      - SEEK_MUSICLIBRARY_MATCH=50
+      - SEEK_MUSICLIBRARY_QUICK_MATCH=true
+      - SEEK_MAX_FILE_SIZE=50
+      - SEEK_IN_MEMORY_DOWNLOADS=true
+      - SEEK_IN_MEMORY_DOWNLOADS_MAX_SIZE=100 
     volumes:
       - ~/Music:/Music
       - ~/nfs_share:/nfs_share
