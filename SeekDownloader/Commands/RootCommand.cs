@@ -5,6 +5,7 @@ using ListRandomizer;
 using SeekDownloader.Helpers;
 using SeekDownloader.Services;
 using Soulseek;
+using File = System.IO.File;
 
 namespace SeekDownloader.Commands;
 
@@ -135,6 +136,11 @@ public class RootCommand : ICommand
         EnvironmentVariable = "SEEK_IN_MEMORY_DOWNLOADS_MAX_SIZE")]
     public int InMemoryDownloadMaxSize { get; set; } = 50;
     
+    [CommandOption("download-archive",
+        Description = "Download only music not listed in the archive file.",
+        EnvironmentVariable = "SEEK_DOWNLOAD_ARCHIVE")]
+    public string DownloadArchiveFilePath { get; set; }
+    
     public async ValueTask ExecuteAsync(IConsole console)
     {
         FileSeekService fileSeeker = new FileSeekService();
@@ -152,6 +158,13 @@ public class RootCommand : ICommand
         downloadService.AllowNonTaggedFiles = AllowNonTaggedFiles;
         downloadService.InMemoryDownloads = InMemoryDownloads;
         downloadService.InMemoryDownloadMaxSize = InMemoryDownloadMaxSize;
+        downloadService.DownloadArchiveFilePath = DownloadArchiveFilePath;
+
+        if (!string.IsNullOrWhiteSpace(downloadService.DownloadArchiveFilePath) && 
+            File.Exists(downloadService.DownloadArchiveFilePath))
+        {
+            downloadService.DownloadArchiveList.AddRange(await File.ReadAllLinesAsync(downloadService.DownloadArchiveFilePath));
+        }
         
         if (!string.IsNullOrWhiteSpace(MusicLibrary))
         {
@@ -235,8 +248,16 @@ public class RootCommand : ICommand
                 }
             }
 
-            var results = await fileSeeker.SearchAsync(tempSearchTerm, songNameTarget, songArtistTarget,
-                downloadService.SoulClient, FilterOutFileNames, SearchFileExtensions, MusicLibraryMatch, MaxFileSize);
+            var results = await fileSeeker.SearchAsync(
+                tempSearchTerm, 
+                songNameTarget, 
+                songArtistTarget,
+                downloadService.SoulClient, 
+                FilterOutFileNames, 
+                SearchFileExtensions, 
+                MusicLibraryMatch, 
+                MaxFileSize,
+                downloadService.DownloadArchiveList);
 
             if (!string.IsNullOrWhiteSpace(fileSeeker.LastErrorMessage)
                 && !downloadService.SoulClient.State.ToString().Contains(SoulseekClientStates.Connected.ToString())

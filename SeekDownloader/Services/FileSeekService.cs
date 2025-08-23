@@ -31,7 +31,8 @@ public class FileSeekService
         List<string> filterOutNames,
         List<string> searchFileExtensions,
         int musicLibraryMatch,
-        int maxFileSize)
+        int maxFileSize,
+        List<string> downloadArchiveList)
     {
         LastErrorMessage = string.Empty;
         try
@@ -43,6 +44,7 @@ public class FileSeekService
                 fileFilter: (file) =>
                 {
                     string seekTrackName = GetSeekTrackName(file.Filename.ToLower());
+                    
                     return searchFileExtensions.Any(ext => file.Filename.EndsWith(ext)) &&
                            (filterOutNames == null || filterOutNames?.Any(name => file.Filename.ToLower().Contains(name)) == false) &&
                            //file.Filename.ToLower().Contains(songNameTarget.ToLower()) &&
@@ -84,6 +86,7 @@ public class FileSeekService
                 })
                 .Select(file => file.FirstOrDefault())
                 .Where(file => file != null)
+                .Where(x => !downloadArchiveList.Contains(GetDownloadArchiveContent(x.Username, x.Size, x.Filename)))
                 .DistinctBy(r => new
                 {
                     r?.Filename,
@@ -102,6 +105,11 @@ public class FileSeekService
         }
 
         return new List<SearchResult>();
+    }
+    
+    private string GetDownloadArchiveContent(string username, long size, string fileName)
+    {
+        return $"{username},{size},{fileName}";
     }
 
     private bool GetTrackName(string fileName, string pattern, ref string trackName)

@@ -27,6 +27,8 @@ public class DownloadService
     public int SeekSuccessCount { get; set; }
     public string CurrentlySeeking { get; set; } = string.Empty;
     public int IncorrectTags { get; set; }
+    public string DownloadArchiveFilePath { get; set; }
+    public List<string> DownloadArchiveList = new  List<string>();
     
     public bool UpdateAlbumName { get; set; }
     
@@ -130,6 +132,40 @@ public class DownloadService
         {
             return _threadDownloadProgress
                 .Any(thread => thread.ThreadStatus?.ToLower().Contains("waiting") == false);
+        }
+    }
+
+    private string GetDownloadArchiveContent(Transfer transfer)
+    {
+        return $"{transfer.Username},{transfer.Size},{transfer.Filename}";
+    }
+
+    private void AppendDownloadArchive(Transfer transfer)
+    {
+        if (string.IsNullOrWhiteSpace(this.DownloadArchiveFilePath))
+        {
+            return;
+        }
+        
+        lock (DownloadArchiveList)
+        {
+            try
+            {
+                string content = GetDownloadArchiveContent(transfer) + "\r\n";
+                DownloadArchiveList.Add(content);
+                File.AppendAllText(this.DownloadArchiveFilePath, content);
+            }
+            catch (Exception e)
+            {
+                lock (_errors)
+                {
+                    if (!string.IsNullOrWhiteSpace(e.Message))
+                    {
+                        _errors.TryAdd(e.Message, 0);
+                        _errors[e.Message]++;
+                    }
+                }
+            }
         }
     }
     
@@ -361,6 +397,8 @@ public class DownloadService
                             {
                                 Directory.CreateDirectory(targetFolder);
                             }
+
+                            AppendDownloadArchive(downloadTask.Result);
                             
                             if (!isInMemoryDownload)
                             {
