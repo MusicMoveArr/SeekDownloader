@@ -11,6 +11,7 @@ public class DownloadProgress
     public string ThreadStatus { get; set; } = string.Empty;
     public double AverageDownloadSpeed { get; set; } = 0;
     public bool IsInMemoryDownload { get; set; }
+    public string Username { get; set; }
 
     public DownloadProgress(string filename, int progress)
     {

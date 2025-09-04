@@ -187,7 +187,6 @@ public class DownloadService
                 }
 
                 var possibleDownloadResults = searchGroup.SearchResults.ToList();
-
                 int downloadIndex = 0;
 
                 foreach (var downFile in possibleDownloadResults)
@@ -291,13 +290,6 @@ public class DownloadService
 
                     try
                     {
-                        if (!OutputStatus)
-                        {
-                            Console.WriteLine($"Downloading, '{downFile.Filename}'");
-                        }
-                        
-                        SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Downloading");
-
                         Stopwatch stopwatch = Stopwatch.StartNew();
                         Stream fileStream;
                         Task<Transfer>? downloadTask;
@@ -322,6 +314,40 @@ public class DownloadService
                             }
                             fileStream = new FileStream(tempTargetFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
                         }
+
+                        Random rnd = new Random();
+                        while (!_stopThreads)
+                        {
+                            lock (_threadDownloadProgress)
+                            {
+                                bool wait = _threadDownloadProgress.Any(progress => 
+                                    string.Equals(progress.Username, downFile.Username) && 
+                                    string.Equals(progress.ThreadStatus, "Downloading"));
+
+                                if (wait)
+                                {
+                                    SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Waiting, already downloading from user '{downFile.Username}'");
+                                }
+                            
+                                if (!wait)
+                                {
+                                    break;
+                                }
+                            }
+
+                            Thread.Sleep(rnd.Next(500, 5000));
+                        }
+                        if (_stopThreads)
+                        {
+                            break;
+                        }
+                        
+                        if (!OutputStatus)
+                        {
+                            Console.WriteLine($"Downloading, '{downFile.Filename}'");
+                        }
+                        
+                        SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Downloading");
 
                         downloadTask = this.SoulClient.DownloadAsync(
                             username: downFile.Username, 
@@ -534,6 +560,7 @@ public class DownloadService
         List<SearchResult> possibleDownloadResults)
     {       
         SetThreadStatus(threadIndex, status => status.AverageDownloadSpeed = transfer.AverageSpeed);
+        SetThreadStatus(threadIndex, status => status.Username = transfer.Username);
                                 
         lock (_lastProgressReport)
         {
