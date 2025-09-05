@@ -249,8 +249,8 @@ public class RootCommand : ICommand
             }
 
             var results = await fileSeeker.SearchAsync(
-                tempSearchTerm, 
                 songNameTarget, 
+                songAlbumTarget, 
                 songArtistTarget,
                 downloadService.SoulClient, 
                 FilterOutFileNames, 

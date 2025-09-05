@@ -7,5 +7,7 @@ public class SearchResult
     public required long Size { get; init; }
     public required bool HasFreeUploadSlot { get; init; }
     public required int UploadSpeed { get; init; }
-    public required string TrackName { get; init; }
+    public required int PotentialArtistMatch { get; init; }
+    public required int PotentialAlbumMatch { get; init; }
+    public required int PotentialTrackMatch { get; init; }
 }
