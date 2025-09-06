@@ -444,16 +444,24 @@ public class DownloadService
                                                         !string.IsNullOrWhiteSpace(field.Value) &&
                                                         Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), field.Value) >= 80);
                             }
+
+                            string? targetNameTrack = searchGroup.SongNames
+                                .Where(name => FuzzyHelper.ExactNumberMatch(name, track.Title))
+                                .Select(name => new
+                                {
+                                    Name = name, 
+                                    MatchedFor = Fuzz.PartialTokenSetRatio(name.ToLower(), track.Title.ToLower())
+                                })
+                                .OrderByDescending(match => match.MatchedFor)
+                                .FirstOrDefault()?.Name;
                             
-                            bool trackNameMatch = string.IsNullOrWhiteSpace(searchGroup.TargetSongName) || 
-                                                  (Fuzz.PartialTokenSetRatio(searchGroup.TargetSongName.ToLower(), track.Title.ToLower()) >= 80 &&
-                                                  FuzzyHelper.ExactNumberMatch(searchGroup.TargetSongName, track.Title));
+                            bool trackNameMatch = !string.IsNullOrWhiteSpace(targetNameTrack);
                             
                             if (UpdateAlbumName && 
                                 artistNameMatch &&
                                 trackNameMatch &&
                                 !string.IsNullOrWhiteSpace(searchGroup.TargetAlbumName) && 
-                                !string.IsNullOrWhiteSpace(searchGroup.TargetSongName))
+                                !string.IsNullOrWhiteSpace(targetNameTrack))
                             {
                                 track.AdditionalFields.Add("OriginalAlbumName", track.Album);
                                 track.Album = searchGroup.TargetAlbumName;

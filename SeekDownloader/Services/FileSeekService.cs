@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using FuzzySharp;
 using SeekDownloader.Helpers;
+using SeekDownloader.Models;
 using Soulseek;
 using File = Soulseek.File;
 
@@ -26,20 +27,28 @@ public class FileSeekService
     public string LastErrorMessage = string.Empty;
 
     public async Task<List<SearchResult>> SearchAsync(
-        string songNameTarget, 
-        string songAlbumTarget, 
-        string songArtistTarget, 
+        List<SearchTermModel> searchTerms, 
         SoulseekClient client,
         List<string> filterOutNames,
         List<string> searchFileExtensions,
         int musicLibraryMatch,
         int maxFileSize,
-        List<string> downloadArchiveList)
+        List<string> downloadArchiveList,
+        int searchMatchArtistPercentage,
+        int searchMatchAlbumPercentage,
+        int searchMatchTrackPercentage)
     {
         LastErrorMessage = string.Empty;
         try
         {
-            AddToCache(songArtistTarget);
+            
+            SearchTermModel firstSearchTerm = searchTerms.First();
+            AddToCache(firstSearchTerm.ArtistName);
+            
+            List<string> songNames = searchTerms
+                .Select(term => term.SongName)
+                .Where(term => !string.IsNullOrEmpty(term))
+                .ToList()!;
             
             var options = new SearchOptions(
                 fileFilter: (file) =>
@@ -47,37 +56,24 @@ public class FileSeekService
                     return searchFileExtensions.Any(ext => file.Filename.EndsWith(ext)) &&
                            (filterOutNames == null || filterOutNames?.Any(name => file.Filename.ToLower().Contains(name.ToLower())) == false) &&
                            file.Size < (maxFileSize * 1024 * 1024) &&
-                           Fuzz.PartialRatio(file.Filename.ToLower(), songArtistTarget.ToLower()) > 80 &&
-                           (string.IsNullOrWhiteSpace(songNameTarget) || Fuzz.PartialRatio(file.Filename.ToLower(), songNameTarget.ToLower()) > 80) &&
-                           !AlreadyInLibrary(songArtistTarget, file.Filename, musicLibraryMatch, searchFileExtensions);
+                           !AlreadyInLibrary(firstSearchTerm.ArtistName, file.Filename, musicLibraryMatch, searchFileExtensions);
                 });
             
-            //search by artist name
-            var searchQueryArtist = SearchQuery.FromText(songArtistTarget);
-            var responseArtist = await client.SearchAsync(searchQueryArtist, options: options);
-            var responses = responseArtist.Responses.ToList();
-
+            List<SearchResponse> responses = new List<SearchResponse>();
+            
             //search by artist + album
-            if (!string.IsNullOrWhiteSpace(songAlbumTarget))
+            //or search by just the artist
+            if (!string.IsNullOrWhiteSpace(firstSearchTerm.AlbumName))
             {
-                var searchQueryArtistAlbum = SearchQuery.FromText($"{songArtistTarget} - {songAlbumTarget}");
+                var searchQueryArtistAlbum = SearchQuery.FromText($"{firstSearchTerm.ArtistName} - {firstSearchTerm.AlbumName}");
                 var responseArtistAlbum = await client.SearchAsync(searchQueryArtistAlbum, options: options);
                 responses.AddRange(responseArtistAlbum.Responses.ToList());
             }
-
-            //search by artist + album + trackname
-            if (!string.IsNullOrWhiteSpace(songAlbumTarget) && !string.IsNullOrWhiteSpace(songNameTarget))
+            else if (!string.IsNullOrWhiteSpace(firstSearchTerm.ArtistName))
             {
-                var searchQueryArtistAlbumTrack = SearchQuery.FromText($"{songArtistTarget} - {songAlbumTarget} - {songNameTarget}");
-                var responseArtistAlbumTrack = await client.SearchAsync(searchQueryArtistAlbumTrack, options: options);
-                responses.AddRange(responseArtistAlbumTrack.Responses.ToList());
-            }
-            else if (!string.IsNullOrWhiteSpace(songNameTarget))
-            {
-                //search by artist + trackname
-                var searchQueryArtistAlbumTrack = SearchQuery.FromText($"{songArtistTarget} - {songNameTarget}");
-                var responseArtistAlbumTrack = await client.SearchAsync(searchQueryArtistAlbumTrack, options: options);
-                responses.AddRange(responseArtistAlbumTrack.Responses.ToList());
+                var searchQueryArtist = SearchQuery.FromText($"{firstSearchTerm.ArtistName}");
+                var responseArtist = await client.SearchAsync(searchQueryArtist, options: options);
+                responses.AddRange(responseArtist.Responses.ToList());
             }
             
             var files = responses
@@ -90,14 +86,19 @@ public class FileSeekService
                             Size = f.Size,
                             HasFreeUploadSlot = x.HasFreeUploadSlot,
                             UploadSpeed = x.UploadSpeed,
-                            PotentialArtistMatch = Fuzz.PartialRatio(f.Filename, songArtistTarget),
-                            PotentialAlbumMatch = (string.IsNullOrWhiteSpace(songAlbumTarget) ? 100 : Fuzz.PartialRatio(f.Filename, songAlbumTarget)),
-                            PotentialTrackMatch = (string.IsNullOrWhiteSpace(songNameTarget) ? 100 : Fuzz.PartialRatio(f.Filename, songNameTarget)),
+                            PotentialArtistMatch = Fuzz.PartialRatio(f.Filename.ToLower(), firstSearchTerm.ArtistName.ToLower()),
+                            PotentialAlbumMatch = string.IsNullOrWhiteSpace(firstSearchTerm.AlbumName) ? 100 : Fuzz.PartialRatio(f.Filename.ToLower(), firstSearchTerm.AlbumName.ToLower()),
+                            
+                            PotentialTrackMatch = songNames.Count == 0 ? 100 :
+                                songNames.Select(name => Fuzz.PartialRatio(f.Filename?.Split(new char []{'\\', '/'}, StringSplitOptions.RemoveEmptyEntries)
+                                                                                .LastOrDefault()?.ToLower(), name.ToLower()))
+                                    .OrderDescending()
+                                    .First(),
                         })
                 )
-                .Where(file => file.PotentialArtistMatch > 80)
-                .Where(file => file.PotentialAlbumMatch > 80)
-                .Where(file => file.PotentialTrackMatch > 80)
+                .Where(file => file.PotentialArtistMatch >= searchMatchArtistPercentage)
+                .Where(file => file.PotentialAlbumMatch >= searchMatchAlbumPercentage)
+                .Where(file => file.PotentialTrackMatch >= searchMatchTrackPercentage)
                 .Where(x => !downloadArchiveList.Contains(GetDownloadArchiveContent(x.Username, x.Size, x.Filename)))
                 .DistinctBy(r => new
                 {
@@ -105,11 +106,11 @@ public class FileSeekService
                     r?.Username
                 })
                 .OrderByDescending(file => file.PotentialArtistMatch)
-                .ThenByDescending(r => r?.PotentialAlbumMatch)
-                .ThenByDescending(r => r?.PotentialTrackMatch)
-                .ThenByDescending(r => r?.HasFreeUploadSlot)
-                .ThenByDescending(r => r?.Size)
-                .ThenByDescending(r => r?.UploadSpeed)
+                .ThenByDescending(file => file.PotentialAlbumMatch)
+                .ThenByDescending(file => file.PotentialTrackMatch)
+                .ThenByDescending(file => file.HasFreeUploadSlot)
+                .ThenByDescending(file => file.Size)
+                .ThenByDescending(file => file.UploadSpeed)
                 .ToList();
             
             return files;

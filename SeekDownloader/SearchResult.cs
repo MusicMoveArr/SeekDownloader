@@ -10,4 +10,7 @@ public class SearchResult
     public required int PotentialArtistMatch { get; init; }
     public required int PotentialAlbumMatch { get; init; }
     public required int PotentialTrackMatch { get; init; }
+
+    public string? FileNameWithExt
+        => Filename?.Split(new char []{'\\', '/'}, StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
 }

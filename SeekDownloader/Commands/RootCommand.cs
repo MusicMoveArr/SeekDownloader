@@ -1,8 +1,11 @@
 using CliFx;
 using CliFx.Attributes;
 using CliFx.Infrastructure;
+using FuzzySharp;
 using ListRandomizer;
+using SeekDownloader.Enums;
 using SeekDownloader.Helpers;
+using SeekDownloader.Models;
 using SeekDownloader.Services;
 using Soulseek;
 using File = System.IO.File;
@@ -141,6 +144,21 @@ public class RootCommand : ICommand
         EnvironmentVariable = "SEEK_DOWNLOAD_ARCHIVE")]
     public string DownloadArchiveFilePath { get; set; }
     
+    [CommandOption("search-match-artist",
+        Description = "Set the hitrate percentage for searching the Artist.",
+        EnvironmentVariable = "SEEK_SEARCH_MATCH_ARTIST")]
+    public int SearchMatchArtistPercentage { get; set; } = 50;
+    
+    [CommandOption("search-match-album",
+        Description = "Set the hitrate percentage for searching the Album.",
+        EnvironmentVariable = "SEEK_SEARCH_MATCH_ALBUM")]
+    public int SearchMatchAlbumPercentage { get; set; } = 50;
+    
+    [CommandOption("search-match-track",
+        Description = "Set the hitrate percentage for searching the Track.",
+        EnvironmentVariable = "SEEK_SEARCH_MATCH_TRACK")]
+    public int SearchMatchTrackPercentage { get; set; } = 50;
+    
     public async ValueTask ExecuteAsync(IConsole console)
     {
         FileSeekService fileSeeker = new FileSeekService();
@@ -188,76 +206,61 @@ public class RootCommand : ICommand
         
         await downloadService.ConnectAsync();
         downloadService.StartThreads();
+
+        var searchTermGroups = downloadService.MissingNames
+            .Select(term => new SearchTermModel(term, SearchDelimeter))
+            .GroupBy(terms => new
+            {
+                terms.ArtistName,
+                terms.AlbumName,
+                terms.SearchTermType
+            })
+            .ToList();
         
-        foreach (string name in downloadService.MissingNames)
+        foreach (var terms in searchTermGroups)
         {
-            var split = name.Split(SearchDelimeter, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-            string songNameTarget = string.Empty;
-            string songAlbumTarget = string.Empty;
-            string songArtistTarget = string.Empty;
-
-            if (split.Length > 2)
-            {
-                songNameTarget = string.Join(SearchDelimeter, split.Skip(2).ToList());
-                songAlbumTarget = split.Skip(1).First();
-                songArtistTarget = split.First();
-            }
-            else if (split.Length > 1)
-            {
-                songNameTarget = string.Join(SearchDelimeter, split.Skip(1).ToList());
-                songAlbumTarget = split.First();
-            }
-            else
-            {
-                songArtistTarget = name;
-            }
-
             while (downloadService.InQueueCount > 100)
             {
                 Thread.Sleep(1000);
             }
 
-            List<string> reconstructedName = new List<string>();
-            if (!string.IsNullOrWhiteSpace(songArtistTarget))
+            List<SearchTermModel> searchTerms = new List<SearchTermModel>();
+            SearchTermModel firstSearchTerm = terms.First();
+            downloadService.CurrentlySeeking = firstSearchTerm.SearchTerm;
+
+            if (MusicLibraryQuickMatch && 
+                firstSearchTerm.SearchTermType is SearchTermType.ArtistTrack or SearchTermType.ArtistAlbumTrack)
             {
-                reconstructedName.Add(songArtistTarget);
-            }
+                fileSeeker.AddToCache(firstSearchTerm.ArtistName);
 
-            if (!string.IsNullOrWhiteSpace(songAlbumTarget))
-            {
-                reconstructedName.Add(songAlbumTarget);
-            }
-
-            if (!string.IsNullOrWhiteSpace(songNameTarget))
-            {
-                reconstructedName.Add(songNameTarget);
-            }
-
-            string tempSearchTerm = string.Join(" - ", reconstructedName);
-
-            downloadService.SeekCount++;
-            downloadService.CurrentlySeeking = tempSearchTerm;
-
-            if (MusicLibraryQuickMatch && !string.IsNullOrWhiteSpace(songNameTarget))
-            {
-                fileSeeker.AddToCache(songArtistTarget);
-                if (fileSeeker.AlreadyInLibraryByTrack(songArtistTarget, songNameTarget, MusicLibraryMatch, SearchFileExtensions))
+                foreach (var term in terms)
                 {
-                    downloadService.AlreadyDownloadedSkipCount++;
-                    continue;
+                    if (fileSeeker.AlreadyInLibraryByTrack(firstSearchTerm.ArtistName, term.SongName, MusicLibraryMatch, SearchFileExtensions))
+                    {
+                        downloadService.AlreadyDownloadedSkipCount++;
+                    }
+                    else
+                    {
+                        searchTerms.Add(term);
+                    }
                 }
+            }
+            else
+            {
+                searchTerms = terms.ToList();
             }
 
             var results = await fileSeeker.SearchAsync(
-                songNameTarget, 
-                songAlbumTarget, 
-                songArtistTarget,
+                searchTerms,
                 downloadService.SoulClient, 
                 FilterOutFileNames, 
                 SearchFileExtensions, 
                 MusicLibraryMatch, 
                 MaxFileSize,
-                downloadService.DownloadArchiveList);
+                downloadService.DownloadArchiveList,
+                SearchMatchArtistPercentage,
+                SearchMatchAlbumPercentage,
+                SearchMatchTrackPercentage);
 
             if (!string.IsNullOrWhiteSpace(fileSeeker.LastErrorMessage)
                 && !downloadService.SoulClient.State.ToString().Contains(SoulseekClientStates.Connected.ToString())
@@ -273,20 +276,54 @@ public class RootCommand : ICommand
 
             if (!OutputStatus)
             {
-                Console.WriteLine($"Seeked: '{tempSearchTerm}, Found {results.Count} files");
+                Console.WriteLine($"Seeked: '{firstSearchTerm.SearchTerm}, Found {results.Count} files");
             }
+            
+            downloadService.SeekCount += terms.Count();
 
             if (results.Count > 0)
             {
-                if (GroupedDownloads)
+                List<string> songNames = searchTerms
+                    .Select(term => term.SongName)
+                    .Where(term => !string.IsNullOrEmpty(term))
+                    .ToList()!;
+
+                if (GroupedDownloads && DownloadSingles && songNames.Count > 0)
+                {
+                    //"de-group" so to say...
+                    foreach (var songName in songNames)
+                    {
+                        var degroupedResults = results
+                            .Select(result => new
+                            {
+                                Result = result,
+                                MatchedFor = Fuzz.PartialRatio(result.FileNameWithExt.ToLower(), songName.ToLower())
+                            })
+                            .Where(result => result.MatchedFor >= SearchMatchTrackPercentage)
+                            .OrderByDescending(result => result.MatchedFor)
+                            .Select(result => result.Result)
+                            .ToList();
+                        
+                        if (degroupedResults.Count > 0)
+                        {
+                            downloadService.EnqueueDownload(new SearchGroup()
+                            {
+                                SearchResults = degroupedResults,
+                                TargetAlbumName = firstSearchTerm.AlbumName,
+                                TargetArtistName = firstSearchTerm.ArtistName,
+                                SongNames = [songName]
+                            });
+                        }
+                    }
+                }
+                else if (GroupedDownloads)
                 {
                     downloadService.EnqueueDownload(new SearchGroup()
                     {
                         SearchResults = results,
-                        TargetAlbumName = songAlbumTarget,
-                        TargetArtistName = songArtistTarget,
-                        TargetSongName = songNameTarget,
-                        SongNames = new List<string>()
+                        TargetAlbumName = firstSearchTerm.AlbumName,
+                        TargetArtistName = firstSearchTerm.ArtistName,
+                        SongNames = songNames
                     });
                 }
                 else
@@ -296,10 +333,9 @@ public class RootCommand : ICommand
                         downloadService.EnqueueDownload(new SearchGroup()
                         {
                             SearchResults = new List<SearchResult>([result]),
-                            TargetAlbumName = songAlbumTarget,
-                            TargetArtistName = songArtistTarget,
-                            TargetSongName = songNameTarget,
-                            SongNames = new List<string>()
+                            TargetAlbumName = firstSearchTerm.AlbumName,
+                            TargetArtistName = firstSearchTerm.ArtistName,
+                            SongNames = songNames
                         });
                     }
                 }
