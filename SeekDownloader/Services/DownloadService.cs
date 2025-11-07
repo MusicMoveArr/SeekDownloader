@@ -455,7 +455,8 @@ public class DownloadService
                                 .OrderByDescending(match => match.MatchedFor)
                                 .FirstOrDefault()?.Name;
                             
-                            bool trackNameMatch = !string.IsNullOrWhiteSpace(targetNameTrack);
+                            bool trackNameMatch = !searchGroup.SongNames.Any() ||
+                                                  !string.IsNullOrWhiteSpace(targetNameTrack);
                             
                             if (UpdateAlbumName && 
                                 artistNameMatch &&
