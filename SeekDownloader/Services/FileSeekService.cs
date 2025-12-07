@@ -1,11 +1,9 @@
-using System.Diagnostics;
-using System.Text;
 using System.Text.RegularExpressions;
 using FuzzySharp;
 using SeekDownloader.Helpers;
 using SeekDownloader.Models;
 using Soulseek;
-using File = Soulseek.File;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace SeekDownloader.Services;
 
@@ -25,6 +23,13 @@ public class FileSeekService
     ];
 
     public string LastErrorMessage = string.Empty;
+    private readonly MemoryCache _cache;
+
+    public FileSeekService()
+    {
+        var options = new MemoryCacheOptions();
+        _cache = new MemoryCache(options);
+    }
 
     public async Task<List<SearchResult>> SearchAsync(
         List<SearchTermModel> searchTerms, 
@@ -41,7 +46,6 @@ public class FileSeekService
         LastErrorMessage = string.Empty;
         try
         {
-            
             SearchTermModel firstSearchTerm = searchTerms.First();
             AddToCache(firstSearchTerm.ArtistName);
             
@@ -50,31 +54,17 @@ public class FileSeekService
                 .Where(term => !string.IsNullOrEmpty(term))
                 .ToList()!;
             
-            var options = new SearchOptions(
+            var searchOptions = new SearchOptions(
                 fileFilter: (file) =>
                 {
+                    
                     return searchFileExtensions.Any(ext => file.Filename.EndsWith(ext)) &&
                            (filterOutNames == null || filterOutNames?.Any(name => file.Filename.ToLower().Contains(name.ToLower())) == false) &&
                            file.Size < (maxFileSize * 1024 * 1024) &&
                            !AlreadyInLibrary(firstSearchTerm.ArtistName, file.Filename, musicLibraryMatch, searchFileExtensions);
-                });
+                }, fileLimit: int.MaxValue, responseLimit: int.MaxValue);
             
-            List<SearchResponse> responses = new List<SearchResponse>();
-            
-            //search by artist + album
-            //or search by just the artist
-            if (!string.IsNullOrWhiteSpace(firstSearchTerm.AlbumName))
-            {
-                var searchQueryArtistAlbum = SearchQuery.FromText($"{firstSearchTerm.ArtistName} - {firstSearchTerm.AlbumName}");
-                var responseArtistAlbum = await client.SearchAsync(searchQueryArtistAlbum, options: options);
-                responses.AddRange(responseArtistAlbum.Responses.ToList());
-            }
-            else if (!string.IsNullOrWhiteSpace(firstSearchTerm.ArtistName))
-            {
-                var searchQueryArtist = SearchQuery.FromText($"{firstSearchTerm.ArtistName}");
-                var responseArtist = await client.SearchAsync(searchQueryArtist, options: options);
-                responses.AddRange(responseArtist.Responses.ToList());
-            }
+            List<SearchResponse> responses = await CacheSearchResultsAsync(firstSearchTerm.ArtistName, searchOptions, client);
             
             var files = responses
                 .SelectMany(x =>
@@ -121,6 +111,32 @@ public class FileSeekService
         }
 
         return new List<SearchResult>();
+    }
+
+    private async Task<List<SearchResponse>> CacheSearchResultsAsync(string searchTerm, SearchOptions searchOptions, SoulseekClient client)
+    {
+        List<SearchResponse> results = new List<SearchResponse>();
+        string cacheKey = $"Search_{searchTerm}";
+                
+        if (!_cache.TryGetValue(cacheKey, out List<SearchResponse>? result))
+        {
+            var searchQueryArtistAlbum = SearchQuery.FromText(searchTerm);
+            var responseArtistAlbum = await client.SearchAsync(searchQueryArtistAlbum, options: searchOptions);
+            results.AddRange(responseArtistAlbum.Responses.ToList());
+                    
+            MemoryCacheEntryOptions cacheOptions = new()
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5)
+            };
+                
+            _cache.Set(cacheKey, results, cacheOptions);
+        }
+        else
+        {
+            results.AddRange(result);
+        }
+
+        return results;
     }
     
     public string GetDownloadArchiveContent(string username, long size, string fileName)
