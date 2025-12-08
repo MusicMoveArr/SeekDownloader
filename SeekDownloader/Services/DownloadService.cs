@@ -355,7 +355,8 @@ public class DownloadService
                             async () => fileStream, 
                             size:  downFile.Size, 
                             cancellationToken: cancellationToken.Token,
-                            options: new TransferOptions(stateChanged: (e) => { },
+                            options: new TransferOptions(stateChanged: (e) => {  }, 
+                                disposeOutputStreamOnCompletion: false,
                             progressUpdated: (e) =>
                                 ProgressUpdatedCallback(
                                     e.PreviousBytesTransferred, 
@@ -552,6 +553,15 @@ public class DownloadService
                     catch (Exception e)
                     {
                         //Console.WriteLine($"Error trying to download {e.Message}, trying next download");
+                        SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Error, {e.StackTrace}");
+                        lock (_errors)
+                        {
+                            if (!string.IsNullOrWhiteSpace(e.Message))
+                            {
+                                _errors.TryAdd(e.Message, 0);
+                                _errors[e.Message]++;
+                            }
+                        }
                     }
                 }
             }
