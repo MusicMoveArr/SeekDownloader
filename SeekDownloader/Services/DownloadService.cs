@@ -405,11 +405,21 @@ public class DownloadService
                                 }
                                 _userErrors[downFile.Username]++;
                             }
+                            
+                            if (File.Exists(tempTargetFile))
+                            {
+                                File.Delete(tempTargetFile);
+                            }
+                            
                             continue;
                         }
 
                         if (!downloadTask.IsCompleted)
                         {
+                            if (File.Exists(tempTargetFile))
+                            {
+                                File.Delete(tempTargetFile);
+                            }
                             //Console.WriteLine($"Download canceled for {targetFile}");
                             continue;
                         }
