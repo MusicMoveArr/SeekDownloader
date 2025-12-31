@@ -79,6 +79,11 @@ public class FileSeekService
                             PotentialArtistMatch = Fuzz.PartialRatio(f.Filename.ToLower(), firstSearchTerm.ArtistName.ToLower()),
                             PotentialAlbumMatch = string.IsNullOrWhiteSpace(firstSearchTerm.AlbumName) ? 100 : Fuzz.PartialRatio(f.Filename.ToLower(), firstSearchTerm.AlbumName.ToLower()),
                             
+                            PotentialTrackWithoutVersionMatch = songNames.Count == 0 ? 100 :
+                                songNames.Select(name => TrackMatchWithoutVersion(f.Filename, name))
+                                    .OrderDescending()
+                                    .First(),
+                            
                             PotentialTrackMatch = songNames.Count == 0 ? 100 :
                                 songNames.Select(name => Fuzz.PartialRatio(f.Filename?.Split(new char []{'\\', '/'}, StringSplitOptions.RemoveEmptyEntries)
                                                                                 .LastOrDefault()?.ToLower(), name.ToLower()))
@@ -88,7 +93,7 @@ public class FileSeekService
                 )
                 .Where(file => file.PotentialArtistMatch >= searchMatchArtistPercentage)
                 .Where(file => file.PotentialAlbumMatch >= searchMatchAlbumPercentage)
-                .Where(file => file.PotentialTrackMatch >= searchMatchTrackPercentage)
+                .Where(file => file.PotentialTrackMatch >= searchMatchTrackPercentage || file.PotentialTrackWithoutVersionMatch >= searchMatchTrackPercentage)
                 .Where(x => !downloadArchiveList.Contains(GetDownloadArchiveContent(x.Username, x.Size, x.Filename)))
                 .DistinctBy(r => new
                 {
@@ -96,8 +101,9 @@ public class FileSeekService
                     r?.Username
                 })
                 .OrderByDescending(file => file.PotentialArtistMatch)
-                .ThenByDescending(file => file.PotentialAlbumMatch)
+                .ThenByDescending(file => file.PotentialTrackWithoutVersionMatch)
                 .ThenByDescending(file => file.PotentialTrackMatch)
+                .ThenByDescending(file => file.PotentialAlbumMatch)
                 .ThenByDescending(file => file.HasFreeUploadSlot)
                 .ThenByDescending(file => file.Size)
                 .ThenByDescending(file => file.UploadSpeed)
@@ -111,6 +117,25 @@ public class FileSeekService
         }
 
         return new List<SearchResult>();
+    }
+
+    private int TrackMatchWithoutVersion(string filename, string targetSongName)
+    {
+        filename = filename
+            .Split(new char[] { '\\', '/' }, StringSplitOptions.RemoveEmptyEntries)
+            .LastOrDefault() ?? string.Empty
+            .ToLower();
+        
+        if (filename.Contains("("))
+        {
+            filename = filename.Substring(0, filename.IndexOf('('));
+        }
+        if (targetSongName.Contains("("))
+        {
+            targetSongName = targetSongName.Substring(0, targetSongName.IndexOf('('));
+        }
+
+        return Fuzz.PartialRatio(filename, targetSongName);
     }
 
     private async Task<List<SearchResponse>> CacheSearchResultsAsync(string searchTerm, SearchOptions searchOptions, SoulseekClient client)
