@@ -36,6 +36,7 @@ public class DownloadService
     private Dictionary<string, DownloadProgress> _lastProgressReport = new Dictionary<string, DownloadProgress>();
     private Dictionary<string, int> _errors = new Dictionary<string, int>(); 
     private Dictionary<string, int> _userErrors = new Dictionary<string, int>();
+    private Dictionary<string, SemaphoreSlim> _userLocks = new Dictionary<string, SemaphoreSlim>();
     private List<DownloadProgress> _threadDownloadProgress = new List<DownloadProgress>();
     private List<string> _toIgnoreFiles = new List<string>();
     private List<Thread> _downloadThreads = new List<Thread>();
@@ -218,34 +219,9 @@ public class DownloadService
                     
                     downloadIndex++;
 
-                    var splitName = new string[0];
-                    string folderName = string.Empty;
-                    string fileName = string.Empty;
-
-                    if (downFile.Filename.Contains("\\"))
-                    {
-                        splitName = downFile.Filename.Split('\\');
-                    }
-                    else
-                    {
-                        splitName = downFile.Filename.Split("//");
-                    }
-
-                    try
-                    {
-                        fileName = splitName.Last();
-                        folderName = splitName[splitName.Length - 2];
-                    }
-                    catch (Exception e)
-                    {
-                        if (!OutputStatus)
-                        {
-                            Console.WriteLine($"Error, {e.Message}");
-                        }
-                        
-                        SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Error, {e.Message}");
-                        //continue;
-                    }
+                    var splitName = downFile.Filename.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries);
+                    string fileName = splitName.Last();
+                    string folderName = splitName.SkipLast(1).LastOrDefault() ?? string.Empty;
                     
                     string targetFolder = Path.Combine(DownloadFolderNicotine, downFile.Username, folderName);
                     string tempTargetFile = Path.Combine(targetFolder, $"{fileName}.bak");
@@ -286,11 +262,9 @@ public class DownloadService
                         continue;
                     }
             
-                    CancellationTokenSource cancellationToken = new CancellationTokenSource();
 
                     try
                     {
-                        Stopwatch stopwatch = Stopwatch.StartNew();
                         Stream fileStream;
                         Task<Transfer>? downloadTask;
                         
@@ -315,27 +289,30 @@ public class DownloadService
                             fileStream = new FileStream(tempTargetFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
                         }
 
-                        Random rnd = new Random();
+                        SemaphoreSlim userLock;
+
+                        lock (_userLocks)
+                        {
+                            if (!_userLocks.TryGetValue(downFile.Username, out userLock))
+                            {
+                                userLock = new SemaphoreSlim(1, 1);
+                                _userLocks.Add(downFile.Username, userLock);
+                            }
+                        }
+                        
+                        SetThreadStatus(threadIndex, status => status.Username = downFile.Username);
                         while (!_stopThreads)
                         {
                             lock (_threadDownloadProgress)
                             {
-                                bool wait = _threadDownloadProgress.Any(progress => 
-                                    string.Equals(progress.Username, downFile.Username) && 
-                                    string.Equals(progress.ThreadStatus, "Downloading"));
+                                bool locked = userLock.Wait(TimeSpan.FromSeconds(1));
 
-                                if (wait)
-                                {
-                                    SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Waiting, already downloading from user '{downFile.Username}'");
-                                }
-                            
-                                if (!wait)
+                                if (locked)
                                 {
                                     break;
                                 }
+                                SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Waiting, already downloading from user '{downFile.Username}'");
                             }
-
-                            Thread.Sleep(rnd.Next(500, 5000));
                         }
                         if (_stopThreads)
                         {
@@ -347,6 +324,8 @@ public class DownloadService
                             Console.WriteLine($"Downloading, '{downFile.Filename}'");
                         }
                         
+                        Stopwatch stopwatch = Stopwatch.StartNew();
+                        CancellationTokenSource cancellationToken = new CancellationTokenSource();
                         SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Downloading");
 
                         downloadTask = this.SoulClient.DownloadAsync(
@@ -411,7 +390,8 @@ public class DownloadService
                             {
                                 File.Delete(tempTargetFile);
                             }
-                            
+
+                            userLock.Release();
                             continue;
                         }
 
@@ -422,6 +402,7 @@ public class DownloadService
                                 File.Delete(tempTargetFile);
                             }
                             //Console.WriteLine($"Download canceled for {targetFile}");
+                            userLock.Release();
                             continue;
                         }
 
@@ -506,6 +487,7 @@ public class DownloadService
                                 {
                                     new FileInfo(realTargetFile).Delete();
                                 }
+                                userLock.Release();
                                 continue;
                             }
 
@@ -546,6 +528,7 @@ public class DownloadService
 
                             if (DownloadSingles)
                             {
+                                userLock.Release();
                                 break; //for downloading single songs
                             }
                         }
