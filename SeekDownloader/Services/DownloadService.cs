@@ -311,7 +311,7 @@ public class DownloadService
                             size:  downFile.Size, 
                             cancellationToken: cancellationToken.Token,
                             options: new TransferOptions(stateChanged: (e) => {  }, 
-                                disposeOutputStreamOnCompletion: false,
+                            disposeOutputStreamOnCompletion: false,
                             progressUpdated: (e) =>
                                 {
                                     ProgressUpdatedCallback(
@@ -321,11 +321,6 @@ public class DownloadService
                                         threadIndex,
                                         downloadIndex,
                                         possibleDownloadResults);
-                                    if (e.Transfer.ElapsedTime?.TotalSeconds > 10  &&
-                                        e.Transfer.AverageSpeed > 0 && e.Transfer.AverageSpeed / 1000 < 1000)
-                                    {
-                                        cancellationToken.Cancel();
-                                    }
                                 }
                                 ));
 
