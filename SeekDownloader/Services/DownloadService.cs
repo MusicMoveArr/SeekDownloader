@@ -292,6 +292,7 @@ public class DownloadService
                         }
                         if (_stopThreads)
                         {
+                            fileStream.Dispose();
                             break;
                         }
                         
@@ -359,6 +360,7 @@ public class DownloadService
                             }
 
                             userLock.Release();
+                            fileStream.Dispose();
                             continue;
                         }
 
@@ -370,6 +372,7 @@ public class DownloadService
                             }
                             //Console.WriteLine($"Download canceled for {targetFile}");
                             userLock.Release();
+                            fileStream.Dispose();
                             continue;
                         }
 
@@ -455,6 +458,7 @@ public class DownloadService
                                     new FileInfo(realTargetFile).Delete();
                                 }
                                 userLock.Release();
+                                fileStream.Dispose();
                                 continue;
                             }
 
@@ -493,6 +497,7 @@ public class DownloadService
                                 break; //for downloading single songs
                             }
                         }
+                        fileStream.Dispose();
                     }
                     catch (Exception e)
                     {
