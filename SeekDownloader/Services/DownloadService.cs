@@ -28,24 +28,24 @@ public class DownloadService
     public string CurrentlySeeking { get; set; } = string.Empty;
     public int IncorrectTags { get; set; }
     public string DownloadArchiveFilePath { get; set; }
-    public List<string> DownloadArchiveList = new  List<string>();
+    public ConcurrentBag<string> DownloadArchiveList = new  ConcurrentBag<string>();
     
     public bool UpdateAlbumName { get; set; }
     
     private ConcurrentQueue<SearchGroup> _searchGroups = new ConcurrentQueue<SearchGroup>();
-    private Dictionary<string, DownloadProgress> _lastProgressReport = new Dictionary<string, DownloadProgress>();
-    private Dictionary<string, int> _errors = new Dictionary<string, int>(); 
-    private Dictionary<string, int> _userErrors = new Dictionary<string, int>();
-    private Dictionary<string, SemaphoreSlim> _userLocks = new Dictionary<string, SemaphoreSlim>();
-    private List<DownloadProgress> _threadDownloadProgress = new List<DownloadProgress>();
-    private List<string> _toIgnoreFiles = new List<string>();
-    private List<Thread> _downloadThreads = new List<Thread>();
+    private ConcurrentDictionary<string, DownloadProgress> _lastProgressReport = new ConcurrentDictionary<string, DownloadProgress>();
+    private ConcurrentDictionary<string, int> _errors = new ConcurrentDictionary<string, int>(); 
+    private ConcurrentDictionary<string, int> _userErrors = new ConcurrentDictionary<string, int>();
+    private ConcurrentDictionary<string, SemaphoreSlim> _userLocks = new ConcurrentDictionary<string, SemaphoreSlim>();
+    private ConcurrentBag<DownloadProgress> _threadDownloadProgress = new ConcurrentBag<DownloadProgress>();
+    private ConcurrentBag<string> _toIgnoreFiles = new ConcurrentBag<string>();
+    private ConcurrentBag<Thread> _downloadThreads = new ConcurrentBag<Thread>();
     private Thread? _progressThread;
     private bool _stopThreads = false;
-    private List<FileInfo> _cachedNicotineFiles = new List<FileInfo>();
+    private ConcurrentBag<FileInfo> _cachedNicotineFiles = new ConcurrentBag<FileInfo>();
     
     public SoulseekClient? SoulClient { get; private set; }
-    public List<string> MissingNames { get; set; } = new List<string>();
+    public ConcurrentBag<string> MissingNames { get; set; } = new ConcurrentBag<string>();
     public int InQueueCount => _searchGroups.Count;
     public bool CheckTags { get; set; }
     public bool CheckTagsDelete { get; set; }
@@ -116,24 +116,18 @@ public class DownloadService
 
     private void SetThreadStatus(int threadIndex, Action<DownloadProgress> action)
     {
-        lock (_threadDownloadProgress)
+        var downloadProgress = _threadDownloadProgress.FirstOrDefault(progress => progress.ThreadIndex == threadIndex);
+        if (downloadProgress != null)
         {
-            var downloadProgress = _threadDownloadProgress.FirstOrDefault(progress => progress.ThreadIndex == threadIndex);
-            if (downloadProgress != null)
-            {
-                downloadProgress.LastUpdatedAt = DateTime.Now;
-                action(downloadProgress);
-            }
+            downloadProgress.LastUpdatedAt = DateTime.Now;
+            action(downloadProgress);
         }
     }
 
     public bool AnyThreadDownloading()
     {
-        lock (_threadDownloadProgress)
-        {
-            return _threadDownloadProgress
-                .Any(thread => thread.ThreadStatus?.ToLower().Contains("waiting") == false);
-        }
+        return _threadDownloadProgress
+            .Any(thread => thread.ThreadStatus?.ToLower().Contains("waiting") == false);
     }
 
     private string GetDownloadArchiveContent(Transfer transfer)
@@ -148,24 +142,18 @@ public class DownloadService
             return;
         }
         
-        lock (DownloadArchiveList)
+        try
         {
-            try
+            string content = GetDownloadArchiveContent(transfer) + "\r\n";
+            DownloadArchiveList.Add(content);
+            File.AppendAllText(this.DownloadArchiveFilePath, content);
+        }
+        catch (Exception e)
+        {
+            if (!string.IsNullOrWhiteSpace(e.Message))
             {
-                string content = GetDownloadArchiveContent(transfer) + "\r\n";
-                DownloadArchiveList.Add(content);
-                File.AppendAllText(this.DownloadArchiveFilePath, content);
-            }
-            catch (Exception e)
-            {
-                lock (_errors)
-                {
-                    if (!string.IsNullOrWhiteSpace(e.Message))
-                    {
-                        _errors.TryAdd(e.Message, 0);
-                        _errors[e.Message]++;
-                    }
-                }
+                _errors.TryAdd(e.Message, 0);
+                _errors[e.Message]++;
             }
         }
     }
@@ -202,14 +190,11 @@ public class DownloadService
                         SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Waiting for diskspace");
                         Thread.Sleep(5000);
                     }
-                    lock (_userErrors)
+                    if (_userErrors.ContainsKey(downFile.Username) &&
+                        _userErrors[downFile.Username] >= 10)
                     {
-                        if (_userErrors.ContainsKey(downFile.Username) &&
-                            _userErrors[downFile.Username] >= 10)
-                        {
-                            SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Ignored user, {downFile.Username}");
-                            continue;
-                        }
+                        SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Ignored user, {downFile.Username}");
+                        continue;
                     }
 
                     if (_stopThreads)
@@ -232,13 +217,10 @@ public class DownloadService
                         File.Delete(tempTargetFile);
                     }
 
-                    lock (_toIgnoreFiles)
+                    if (_toIgnoreFiles.Contains(fileName.ToLower()))
                     {
-                        if (_toIgnoreFiles.Contains(fileName.ToLower()))
-                        {
-                            AlreadyDownloadedSkipCount++;
-                            continue;
-                        }
+                        AlreadyDownloadedSkipCount++;
+                        continue;
                     }
                     
                     //already downloaded by user?
@@ -291,28 +273,22 @@ public class DownloadService
 
                         SemaphoreSlim userLock;
 
-                        lock (_userLocks)
+                        if (!_userLocks.TryGetValue(downFile.Username, out userLock))
                         {
-                            if (!_userLocks.TryGetValue(downFile.Username, out userLock))
-                            {
-                                userLock = new SemaphoreSlim(1, 1);
-                                _userLocks.Add(downFile.Username, userLock);
-                            }
+                            userLock = new SemaphoreSlim(1, 1);
+                            _userLocks.TryAdd(downFile.Username, userLock);
                         }
                         
                         SetThreadStatus(threadIndex, status => status.Username = downFile.Username);
                         while (!_stopThreads)
                         {
-                            lock (_threadDownloadProgress)
-                            {
-                                bool locked = userLock.Wait(TimeSpan.FromSeconds(1));
+                            bool locked = userLock.Wait(TimeSpan.FromSeconds(1));
 
-                                if (locked)
-                                {
-                                    break;
-                                }
-                                SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Waiting, already downloading from user '{downFile.Username}'");
+                            if (locked)
+                            {
+                                break;
                             }
+                            SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Waiting, already downloading from user '{downFile.Username}'");
                         }
                         if (_stopThreads)
                         {
@@ -337,13 +313,21 @@ public class DownloadService
                             options: new TransferOptions(stateChanged: (e) => {  }, 
                                 disposeOutputStreamOnCompletion: false,
                             progressUpdated: (e) =>
-                                ProgressUpdatedCallback(
-                                    e.PreviousBytesTransferred, 
-                                    e.Transfer,
-                                    stopwatch,
-                                    threadIndex,
-                                    downloadIndex,
-                                    possibleDownloadResults)));
+                                {
+                                    ProgressUpdatedCallback(
+                                        e.PreviousBytesTransferred,
+                                        e.Transfer,
+                                        stopwatch,
+                                        threadIndex,
+                                        downloadIndex,
+                                        possibleDownloadResults);
+                                    if (e.Transfer.ElapsedTime?.TotalSeconds > 10  &&
+                                        e.Transfer.AverageSpeed > 0 && e.Transfer.AverageSpeed / 1000 < 1000)
+                                    {
+                                        cancellationToken.Cancel();
+                                    }
+                                }
+                                ));
 
                         cancellationToken.CancelAfter(TimeSpan.FromMinutes(5));
                         
@@ -368,23 +352,11 @@ public class DownloadService
                                 Console.WriteLine($"Download failed for '{downFile.Filename}'");
                             }
                             SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Download failed");
-                            lock (_errors)
-                            {
-                                if (!_errors.ContainsKey(downloadTask.Exception.Message))
-                                {
-                                    _errors.Add(downloadTask.Exception.Message, 0);
-                                }
-                                _errors[downloadTask.Exception.Message]++;
-                            }
+                            _errors.TryAdd(downloadTask.Exception.Message, 0);
+                            _errors[downloadTask.Exception.Message]++;
                             
-                            lock (_userErrors)
-                            {
-                                if (!_userErrors.ContainsKey(downFile.Username))
-                                {
-                                    _userErrors.Add(downFile.Username, 0);
-                                }
-                                _userErrors[downFile.Username]++;
-                            }
+                            _userErrors.TryAdd(downFile.Username, 0);
+                            _userErrors[downFile.Username]++;
                             
                             if (File.Exists(tempTargetFile))
                             {
@@ -508,10 +480,7 @@ public class DownloadService
                             }
                             fileStream.Dispose();
 
-                            lock (_toIgnoreFiles)
-                            {
-                                _toIgnoreFiles.Add(fileName);
-                            }
+                            _toIgnoreFiles.Add(fileName);
 
                             if (!OutputStatus)
                             {
@@ -520,10 +489,7 @@ public class DownloadService
 
                             if (_cachedNicotineFiles != null)
                             {
-                                lock (_cachedNicotineFiles)
-                                {
-                                    _cachedNicotineFiles.Add(new FileInfo(realTargetFile));
-                                }
+                                _cachedNicotineFiles.Add(new FileInfo(realTargetFile));
                             }
 
                             if (DownloadSingles)
@@ -537,13 +503,11 @@ public class DownloadService
                     {
                         //Console.WriteLine($"Error trying to download {e.Message}, trying next download");
                         SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Error, {e.StackTrace}");
-                        lock (_errors)
+
+                        if (!string.IsNullOrWhiteSpace(e.Message))
                         {
-                            if (!string.IsNullOrWhiteSpace(e.Message))
-                            {
-                                _errors.TryAdd(e.Message, 0);
-                                _errors[e.Message]++;
-                            }
+                            _errors.TryAdd(e.Message, 0);
+                            _errors[e.Message]++;
                         }
                     }
                 }
@@ -551,13 +515,10 @@ public class DownloadService
             catch (Exception e)
             {
                 SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Error, {e.StackTrace}");
-                lock (_errors)
+                if (!string.IsNullOrWhiteSpace(e.Message))
                 {
-                    if (!string.IsNullOrWhiteSpace(e.Message))
-                    {
-                        _errors.TryAdd(e.Message, 0);
-                        _errors[e.Message]++;
-                    }
+                    _errors.TryAdd(e.Message, 0);
+                    _errors[e.Message]++;
                 }
             }
         }
@@ -570,48 +531,43 @@ public class DownloadService
         int threadIndex, 
         int downloadIndex,
         List<SearchResult> possibleDownloadResults)
-    {       
+    {
         SetThreadStatus(threadIndex, status => status.AverageDownloadSpeed = transfer.AverageSpeed);
         SetThreadStatus(threadIndex, status => status.Username = transfer.Username);
-                                
-        lock (_lastProgressReport)
+        
+        int roundedProgress = (int)Math.Round(transfer.PercentComplete);
+        if (!_lastProgressReport.ContainsKey(transfer.Filename))
         {
-            int roundedProgress = (int)Math.Round(transfer.PercentComplete);
-            if (!_lastProgressReport.ContainsKey(transfer.Filename))
-            {
-                _lastProgressReport[transfer.Filename] = new DownloadProgress(transfer.Filename, roundedProgress);
-            }
-                                    
-            _lastProgressReport[transfer.Filename].ThreadIndex = threadIndex;
-            _lastProgressReport[transfer.Filename].ThreadDownloads = possibleDownloadResults.Count;
-            _lastProgressReport[transfer.Filename].ThreadDownloadsIndex = downloadIndex;
-            _lastProgressReport[transfer.Filename].AverageDownloadSpeed = transfer.AverageSpeed;
-                                    
-            if (_lastProgressReport[transfer.Filename].Progress != roundedProgress)
-            {
-                stopwatch.Reset();
-                _lastProgressReport[transfer.Filename].Progress = roundedProgress;
-                _lastProgressReport[transfer.Filename].LastUpdatedAt = DateTime.Now;
-            }
+            _lastProgressReport[transfer.Filename] = new DownloadProgress(transfer.Filename, roundedProgress);
+        }
+                                
+        _lastProgressReport[transfer.Filename].ThreadIndex = threadIndex;
+        _lastProgressReport[transfer.Filename].ThreadDownloads = possibleDownloadResults.Count;
+        _lastProgressReport[transfer.Filename].ThreadDownloadsIndex = downloadIndex;
+        _lastProgressReport[transfer.Filename].AverageDownloadSpeed = transfer.AverageSpeed;
+                                
+        if (_lastProgressReport[transfer.Filename].Progress != roundedProgress)
+        {
+            stopwatch.Reset();
+            _lastProgressReport[transfer.Filename].Progress = roundedProgress;
+            _lastProgressReport[transfer.Filename].LastUpdatedAt = DateTime.Now;
         }
     }
 
     private List<FileInfo> GetCachedNicotineDownloads()
     {
-        lock (_cachedNicotineFiles)
+        var files = _cachedNicotineFiles.ToList();
+        if (files.Count > 0)
         {
-            if (_cachedNicotineFiles.Count > 0)
-            {
-                return _cachedNicotineFiles;
-            }
-
-            _cachedNicotineFiles = new DirectoryInfo(DownloadFolderNicotine)
-                .GetFiles("*.*", SearchOption.AllDirectories)
-                .Where(musicFile => !musicFile.Name.EndsWith(".bak"))
-                .ToList();
-            
-            return _cachedNicotineFiles;
+            return files;
         }
+
+        files = new DirectoryInfo(DownloadFolderNicotine)
+            .GetFiles("*.*", SearchOption.AllDirectories)
+            .Where(musicFile => !musicFile.Name.EndsWith(".bak"))
+            .ToList();
+        
+        return files;
     }
 
     public void EnqueueDownload(SearchGroup searchGroup)
@@ -639,44 +595,35 @@ public class DownloadService
             List<DownloadProgress> downloads;
             int downloaded = 0;
 
-            lock (_lastProgressReport)
-            {
-                downloads = _lastProgressReport.Values
-                    .Where(progress => (DateTime.Now - progress.LastUpdatedAt).TotalSeconds <= 5)
-                    .Where(progress => progress.Progress < 100)
-                    .OrderBy(progress => progress.ThreadIndex)
-                    .ToList();
+            downloads = _lastProgressReport.Values
+                .Where(progress => (DateTime.Now - progress.LastUpdatedAt).TotalSeconds <= 5)
+                .Where(progress => progress.Progress < 100)
+                .OrderBy(progress => progress.ThreadIndex)
+                .ToList();
 
-                downloaded = _lastProgressReport.Values
-                    .Count(progress => progress.Progress == 100);
-            }
+            downloaded = _lastProgressReport.Values
+                .Count(progress => progress.Progress == 100);
             
             output.AppendLine($"Active downloads: {downloads.Count}".PadRight(totalWidth));
             output.AppendLine($"Succesful downloads: {downloaded}".PadRight(totalWidth));
 
 
-            lock (_threadDownloadProgress)
+            foreach (var progress in _threadDownloadProgress)
             {
-                foreach (var progress in _threadDownloadProgress)
-                {
-                    var downloadProgress = downloads.FirstOrDefault(d => d.ThreadIndex == progress.ThreadIndex);
-                    
-                    int downloadSpeed = (int)(progress.AverageDownloadSpeed / 1000);
-                    output.AppendLine($"Thread {progress.ThreadIndex}: [{progress.LastUpdatedAt.ToString("HH:mm:ss")}] {progress.ThreadStatus}, {(progress.IsInMemoryDownload ? "InMemory" : "Disk")}, Speed: {downloadSpeed}KBps{DrawProgressBar(downloadProgress)}".PadRight(totalWidth));
-                }
+                var downloadProgress = downloads.FirstOrDefault(d => d.ThreadIndex == progress.ThreadIndex);
+                
+                int downloadSpeed = (int)(progress.AverageDownloadSpeed / 1000);
+                output.AppendLine($"Thread {progress.ThreadIndex}: [{progress.LastUpdatedAt.ToString("HH:mm:ss")}] {progress.ThreadStatus}, {(progress.IsInMemoryDownload ? "InMemory" : "Disk")}, Speed: {downloadSpeed}KBps{DrawProgressBar(downloadProgress)}".PadRight(totalWidth));
             }
             
-            lock (_errors)
+            foreach (var error in _errors.OrderByDescending(x => x.Value).Take(5))
             {
-                foreach (var error in _errors.OrderByDescending(x => x.Value).Take(5))
+                string errorMessage = $"Error {error.Value}, {error.Key}";
+                if (errorMessage.Length > totalWidth)
                 {
-                    string errorMessage = $"Error {error.Value}, {error.Key}";
-                    if (errorMessage.Length > totalWidth)
-                    {
-                        errorMessage = errorMessage.Substring(0, totalWidth);
-                    }
-                    output.AppendLine(errorMessage);
+                    errorMessage = errorMessage.Substring(0, totalWidth);
                 }
+                output.AppendLine(errorMessage);
             }
 
             for (int i = 0; i < 2; i++)

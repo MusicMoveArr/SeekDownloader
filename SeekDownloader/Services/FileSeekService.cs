@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 using FuzzySharp;
 using SeekDownloader.Helpers;
@@ -38,7 +39,7 @@ public class FileSeekService
         List<string> searchFileExtensions,
         int musicLibraryMatch,
         int maxFileSize,
-        List<string> downloadArchiveList,
+        ConcurrentBag<string> downloadArchiveList,
         int searchMatchArtistPercentage,
         int searchMatchAlbumPercentage,
         int searchMatchTrackPercentage)

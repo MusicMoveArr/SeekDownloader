@@ -181,7 +181,11 @@ public class RootCommand : ICommand
         if (!string.IsNullOrWhiteSpace(downloadService.DownloadArchiveFilePath) && 
             File.Exists(downloadService.DownloadArchiveFilePath))
         {
-            downloadService.DownloadArchiveList.AddRange(await File.ReadAllLinesAsync(downloadService.DownloadArchiveFilePath));
+            foreach (var path in await File.ReadAllLinesAsync(downloadService.DownloadArchiveFilePath))
+            {
+                downloadService.DownloadArchiveList.Add(path);
+            }
+            
         }
         
         if (!string.IsNullOrWhiteSpace(MusicLibrary))
@@ -199,9 +203,12 @@ public class RootCommand : ICommand
         }
         if (!string.IsNullOrWhiteSpace(SearchFilePath))
         {
-            downloadService.MissingNames.AddRange((await System.IO.File.ReadAllLinesAsync(SearchFilePath))
-                .Where(line => !string.IsNullOrWhiteSpace(line))
-                .Distinct());
+            foreach (var path in (await File.ReadAllLinesAsync(SearchFilePath))
+                     .Where(line => !string.IsNullOrWhiteSpace(line))
+                     .Distinct())
+            {
+                downloadService.MissingNames.Add(path);
+            }
         }
         
         await downloadService.ConnectAsync();
@@ -269,11 +276,6 @@ public class RootCommand : ICommand
                 await downloadService.ConnectAsync();
             }
 
-            if (results.Any())
-            {
-                downloadService.SeekSuccessCount++;
-            }
-
             if (!OutputStatus)
             {
                 Console.WriteLine($"Seeked: '{firstSearchTerm.SearchTerm}, Found {results.Count} files");
@@ -306,6 +308,7 @@ public class RootCommand : ICommand
                         
                         if (degroupedResults.Count > 0)
                         {
+                            downloadService.SeekSuccessCount++;
                             downloadService.EnqueueDownload(new SearchGroup()
                             {
                                 SearchResults = degroupedResults,
@@ -318,6 +321,7 @@ public class RootCommand : ICommand
                 }
                 else if (GroupedDownloads)
                 {
+                    downloadService.SeekSuccessCount++;
                     downloadService.EnqueueDownload(new SearchGroup()
                     {
                         SearchResults = results,
@@ -328,6 +332,7 @@ public class RootCommand : ICommand
                 }
                 else
                 {
+                    downloadService.SeekSuccessCount++;
                     foreach (var result in results)
                     {
                         downloadService.EnqueueDownload(new SearchGroup()
