@@ -12,6 +12,7 @@ public class DownloadProgress
     public double AverageDownloadSpeed { get; set; } = 0;
     public bool IsInMemoryDownload { get; set; }
     public string Username { get; set; }
+    public Guid DownloadId { get; set; } = Guid.NewGuid();
 
     public DownloadProgress(string filename, int progress)
     {

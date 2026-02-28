@@ -33,13 +33,12 @@ public class DownloadService
     public bool UpdateAlbumName { get; set; }
     
     private ConcurrentQueue<SearchGroup> _searchGroups = new ConcurrentQueue<SearchGroup>();
-    private ConcurrentDictionary<string, DownloadProgress> _lastProgressReport = new ConcurrentDictionary<string, DownloadProgress>();
     private ConcurrentDictionary<string, int> _errors = new ConcurrentDictionary<string, int>(); 
     private ConcurrentDictionary<string, int> _userErrors = new ConcurrentDictionary<string, int>();
     private ConcurrentDictionary<string, SemaphoreSlim> _userLocks = new ConcurrentDictionary<string, SemaphoreSlim>();
-    private ConcurrentBag<DownloadProgress> _threadDownloadProgress = new ConcurrentBag<DownloadProgress>();
+    private ConcurrentDictionary<Guid, DownloadProgress> _threadDownloadProgress = new ConcurrentDictionary<Guid, DownloadProgress>();
     private ConcurrentBag<string> _toIgnoreFiles = new ConcurrentBag<string>();
-    private ConcurrentBag<Thread> _downloadThreads = new ConcurrentBag<Thread>();
+    private ConcurrentDictionary<Guid, Thread> _downloadThreads = new ConcurrentDictionary<Guid, Thread>();
     private Thread? _progressThread;
     private bool _stopThreads = false;
     private ConcurrentBag<FileInfo> _cachedNicotineFiles = new ConcurrentBag<FileInfo>();
@@ -89,19 +88,8 @@ public class DownloadService
         }
     }
 
-    public void StartThreads()
+    public void StartProgressThread()
     {
-        for (int i = 0; i < ThreadCount; i++)
-        {
-            _threadDownloadProgress.Add(new DownloadProgress()
-            {
-                ThreadIndex = i
-            });
-            Thread thread = new Thread(new ParameterizedThreadStart(DownloadThread));
-            thread.Start(i);
-            _downloadThreads.Add(thread);
-        }
-
         if (OutputStatus)
         {
             _progressThread = new Thread(new ThreadStart(ProgressThread));
@@ -114,9 +102,8 @@ public class DownloadService
         _stopThreads = true;
     }
 
-    private void SetThreadStatus(int threadIndex, Action<DownloadProgress> action)
+    private void SetThreadStatus(DownloadProgress downloadProgress, Action<DownloadProgress> action)
     {
-        var downloadProgress = _threadDownloadProgress.FirstOrDefault(progress => progress.ThreadIndex == threadIndex);
         if (downloadProgress != null)
         {
             downloadProgress.LastUpdatedAt = DateTime.Now;
@@ -126,8 +113,8 @@ public class DownloadService
 
     public bool AnyThreadDownloading()
     {
-        return _threadDownloadProgress
-            .Any(thread => thread.ThreadStatus?.ToLower().Contains("waiting") == false);
+        return _threadDownloadProgress.AsReadOnly()
+            .Any(thread => thread.Value.ThreadStatus?.ToLower().Contains("waiting") == false);
     }
 
     private string GetDownloadArchiveContent(Transfer transfer)
@@ -158,399 +145,397 @@ public class DownloadService
         }
     }
     
-    void DownloadThread(object? threadIndexObj)
+    void DownloadThread(object? downloadProgressObj)
     {
-        int threadIndex = (int?)threadIndexObj ?? 0;
-        while (!_stopThreads)
+        DownloadProgress downloadProgress = (DownloadProgress)downloadProgressObj;
+        int threadIndex = downloadProgress.ThreadIndex;
+        
+        try
         {
-            try
+            SetThreadStatus(downloadProgress, status => status.ThreadStatus = $"Waiting");
+            
+            SearchGroup? searchGroup = null;
+            if (!_searchGroups.TryDequeue(out searchGroup))
             {
-                SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Waiting");
-                
-                SearchGroup? searchGroup = null;
-                if (!_searchGroups.TryDequeue(out searchGroup))
+                SetThreadStatus(downloadProgress, status => status.ThreadStatus = $"Waiting");
+                Thread.Sleep(2000);
+                return;
+            }
+
+            var possibleDownloadResults = searchGroup.SearchResults.ToList();
+            int downloadIndex = 0;
+
+            foreach (var downFile in possibleDownloadResults)
+            {
+                while (!EnoughDiskSpace(DownloadFolderNicotine) && !_stopThreads)
                 {
-                    SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Waiting");
-                    Thread.Sleep(2000);
+                    if (!OutputStatus)
+                    {
+                        Console.WriteLine($"Waiting for diskspace");
+                    }
+                    
+                    SetThreadStatus(downloadProgress, status => status.ThreadStatus = $"Waiting for diskspace");
+                    Thread.Sleep(5000);
+                }
+                if (_userErrors.ContainsKey(downFile.Username) &&
+                    _userErrors[downFile.Username] >= 10)
+                {
+                    SetThreadStatus(downloadProgress, status => status.ThreadStatus = $"Ignored user, {downFile.Username}");
                     continue;
                 }
 
-                var possibleDownloadResults = searchGroup.SearchResults.ToList();
-                int downloadIndex = 0;
-
-                foreach (var downFile in possibleDownloadResults)
+                if (_stopThreads)
                 {
-                    while (!EnoughDiskSpace(DownloadFolderNicotine) && !_stopThreads)
+                    break;
+                }
+                
+                downloadIndex++;
+
+                var splitName = downFile.Filename.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries);
+                string fileName = splitName.Last();
+                string folderName = splitName.SkipLast(1).LastOrDefault() ?? string.Empty;
+                
+                string targetFolder = Path.Combine(DownloadFolderNicotine, downFile.Username, folderName);
+                string tempTargetFile = Path.Combine(targetFolder, $"{fileName}.bak");
+                string realTargetFile = Path.Combine(targetFolder, fileName);
+
+                if (File.Exists(tempTargetFile))
+                {
+                    File.Delete(tempTargetFile);
+                }
+
+                if (_toIgnoreFiles.Contains(fileName.ToLower()))
+                {
+                    AlreadyDownloadedSkipCount++;
+                    continue;
+                }
+                
+                //already downloaded by user?
+                FileInfo targetFileInfo = new FileInfo(realTargetFile);
+                if (targetFileInfo.Exists && targetFileInfo.Length == downFile.Size)
+                {
+                    AlreadyDownloadedSkipCount++;
+                    continue;
+                }
+                
+                //already downloaded by nicotine in download folder?
+                bool isAlreadyDownloaded = GetCachedNicotineDownloads()
+                    //.Select(musicFile => musicFile.Name.Split('-', StringSplitOptions.TrimEntries).Last())
+                    .Where(musicFile => musicFile.Name.Contains('.'))
+                    .Select(musicFile => musicFile.Name.Substring(0, musicFile.Name.LastIndexOf('.')))
+                    .Any(musicFile => Fuzz.Ratio(fileName, musicFile) > 90);
+                
+                if (isAlreadyDownloaded)
+                {
+                    AlreadyDownloadedSkipCount++;
+                    continue;
+                }
+        
+
+                try
+                {
+                    Stream fileStream;
+                    Task<Transfer>? downloadTask;
+                    
+                    bool isInMemoryDownload = InMemoryDownloads && downFile.Size < InMemoryDownloadMaxSize * 1024 * 1024;
+                    SetThreadStatus(downloadProgress, status => status.IsInMemoryDownload = isInMemoryDownload);
+
+                    if (isInMemoryDownload)
                     {
-                        if (!OutputStatus)
+                        fileStream = new MemoryStream();
+                    }
+                    else
+                    {
+                        if (!Directory.Exists(targetFolder))
                         {
-                            Console.WriteLine($"Waiting for diskspace");
+                            Directory.CreateDirectory(targetFolder);
                         }
                         
-                        SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Waiting for diskspace");
-                        Thread.Sleep(5000);
-                    }
-                    if (_userErrors.ContainsKey(downFile.Username) &&
-                        _userErrors[downFile.Username] >= 10)
-                    {
-                        SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Ignored user, {downFile.Username}");
-                        continue;
+                        if (File.Exists(tempTargetFile))
+                        {
+                            File.Delete(tempTargetFile);
+                        }
+                        fileStream = new FileStream(tempTargetFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
                     }
 
+                    SemaphoreSlim userLock;
+
+                    if (!_userLocks.TryGetValue(downFile.Username, out userLock))
+                    {
+                        userLock = new SemaphoreSlim(1, 1);
+                        _userLocks.TryAdd(downFile.Username, userLock);
+                    }
+                    
+                    SetThreadStatus(downloadProgress, status => status.Username = downFile.Username);
+                    while (!_stopThreads)
+                    {
+                        bool locked = userLock.Wait(TimeSpan.FromSeconds(1));
+
+                        if (locked)
+                        {
+                            break;
+                        }
+                        SetThreadStatus(downloadProgress, status => status.ThreadStatus = $"Waiting, already downloading from user '{downFile.Username}'");
+                    }
                     if (_stopThreads)
                     {
+                        fileStream.Dispose();
                         break;
                     }
                     
-                    downloadIndex++;
-
-                    var splitName = downFile.Filename.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries);
-                    string fileName = splitName.Last();
-                    string folderName = splitName.SkipLast(1).LastOrDefault() ?? string.Empty;
-                    
-                    string targetFolder = Path.Combine(DownloadFolderNicotine, downFile.Username, folderName);
-                    string tempTargetFile = Path.Combine(targetFolder, $"{fileName}.bak");
-                    string realTargetFile = Path.Combine(targetFolder, fileName);
-
-                    if (File.Exists(tempTargetFile))
+                    if (!OutputStatus)
                     {
-                        File.Delete(tempTargetFile);
-                    }
-
-                    if (_toIgnoreFiles.Contains(fileName.ToLower()))
-                    {
-                        AlreadyDownloadedSkipCount++;
-                        continue;
+                        Console.WriteLine($"Downloading, '{downFile.Filename}'");
                     }
                     
-                    //already downloaded by user?
-                    FileInfo targetFileInfo = new FileInfo(realTargetFile);
-                    if (targetFileInfo.Exists && targetFileInfo.Length == downFile.Size)
-                    {
-                        AlreadyDownloadedSkipCount++;
-                        continue;
-                    }
-                    
-                    //already downloaded by nicotine in download folder?
-                    bool isAlreadyDownloaded = GetCachedNicotineDownloads()
-                        //.Select(musicFile => musicFile.Name.Split('-', StringSplitOptions.TrimEntries).Last())
-                        .Where(musicFile => musicFile.Name.Contains('.'))
-                        .Select(musicFile => musicFile.Name.Substring(0, musicFile.Name.LastIndexOf('.')))
-                        .Any(musicFile => Fuzz.Ratio(fileName, musicFile) > 90);
-                    
-                    if (isAlreadyDownloaded)
-                    {
-                        AlreadyDownloadedSkipCount++;
-                        continue;
-                    }
-            
+                    Stopwatch stopwatch = Stopwatch.StartNew();
+                    CancellationTokenSource cancellationToken = new CancellationTokenSource();
+                    SetThreadStatus(downloadProgress, status => status.ThreadStatus = $"Downloading");
 
-                    try
+                    downloadTask = this.SoulClient.DownloadAsync(
+                        username: downFile.Username, 
+                        remoteFilename: downFile.Filename,
+                        async () => fileStream, 
+                        size:  downFile.Size, 
+                        cancellationToken: cancellationToken.Token,
+                        options: new TransferOptions(stateChanged: (e) => {  }, 
+                        disposeOutputStreamOnCompletion: false,
+                        progressUpdated: (e) =>
+                            {
+                                ProgressUpdatedCallback(
+                                    downloadProgress,
+                                    e.Transfer,
+                                    stopwatch,
+                                    threadIndex,
+                                    downloadIndex,
+                                    possibleDownloadResults);
+                            }
+                            ));
+
+                    cancellationToken.CancelAfter(TimeSpan.FromMinutes(5));
+                    
+                    while (!downloadTask.IsCompleted && !downloadTask.IsFaulted)
                     {
-                        Stream fileStream;
-                        Task<Transfer>? downloadTask;
+                        Thread.Sleep(1000);
+                        if (stopwatch.Elapsed.TotalSeconds > 30)
+                        {
+                            try
+                            {
+                                cancellationToken.Cancel();
+                            }
+                            catch (Exception e) { }
+                            break;
+                        }
+                    }
+
+                    if (downloadTask.IsFaulted || downloadTask.Exception != null)
+                    {
+                        if (!OutputStatus)
+                        {
+                            Console.WriteLine($"Download failed for '{downFile.Filename}'");
+                        }
+                        SetThreadStatus(downloadProgress, status => status.ThreadStatus = $"Download failed");
+                        _errors.TryAdd(downloadTask.Exception.Message, 0);
+                        _errors[downloadTask.Exception.Message]++;
                         
-                        bool isInMemoryDownload = InMemoryDownloads && downFile.Size < InMemoryDownloadMaxSize * 1024 * 1024;
-                        SetThreadStatus(threadIndex, status => status.IsInMemoryDownload = isInMemoryDownload);
+                        _userErrors.TryAdd(downFile.Username, 0);
+                        _userErrors[downFile.Username]++;
+                        
+                        if (File.Exists(tempTargetFile))
+                        {
+                            File.Delete(tempTargetFile);
+                        }
+
+                        userLock.Release();
+                        fileStream.Dispose();
+                        continue;
+                    }
+
+                    if (!downloadTask.IsCompleted)
+                    {
+                        if (File.Exists(tempTargetFile))
+                        {
+                            File.Delete(tempTargetFile);
+                        }
+                        //Console.WriteLine($"Download canceled for {targetFile}");
+                        userLock.Release();
+                        fileStream.Dispose();
+                        continue;
+                    }
+
+                    fileStream.Position = 0;
+
+                    if (downloadTask.IsCompleted &&
+                        fileStream.Length == downFile.Size)
+                    {
+                        if (!Directory.Exists(targetFolder))
+                        {
+                            Directory.CreateDirectory(targetFolder);
+                        }
+
+                        AppendDownloadArchive(downloadTask.Result);
+                        
+                        if (!isInMemoryDownload)
+                        {
+                            File.Move(tempTargetFile, realTargetFile, true);
+                        }
+
+                        Track track = new Track(fileStream);
+                        bool artistNameMatch = Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), track.Artist.ToLower()) >= 80 ||
+                                               Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), track.AlbumArtist.ToLower()) >= 80 ||
+                                               Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), track.SortArtist.ToLower()) >= 80 ||
+                                               Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), track.SortAlbumArtist.ToLower()) >= 80;
+                        
+                        if (!artistNameMatch)
+                        {
+                            artistNameMatch = Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), track.Album) >= 80 ||
+                                                track.AdditionalFields.Any(field =>
+                                                    !string.IsNullOrWhiteSpace(field.Value) &&
+                                                    Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), field.Value) >= 80);
+                        }
+
+                        string? targetNameTrack = searchGroup.SongNames
+                            .Where(name => FuzzyHelper.ExactNumberMatch(name, track.Title))
+                            .Select(name => new
+                            {
+                                Name = name, 
+                                MatchedFor = Fuzz.PartialTokenSetRatio(name.ToLower(), track.Title.ToLower())
+                            })
+                            .OrderByDescending(match => match.MatchedFor)
+                            .FirstOrDefault()?.Name;
+                        
+                        bool trackNameMatch = !searchGroup.SongNames.Any() ||
+                                              !string.IsNullOrWhiteSpace(targetNameTrack);
+                        
+                        if (UpdateAlbumName && 
+                            artistNameMatch &&
+                            trackNameMatch &&
+                            !string.IsNullOrWhiteSpace(searchGroup.TargetAlbumName) && 
+                            !string.IsNullOrWhiteSpace(targetNameTrack))
+                        {
+                            track.AdditionalFields.Add("OriginalAlbumName", track.Album);
+                            track.Album = searchGroup.TargetAlbumName;
+                            track.Save();
+                        }
+
+                        bool albumNameMatch = string.IsNullOrWhiteSpace(searchGroup.TargetAlbumName) || 
+                                              (Fuzz.PartialTokenSetRatio(searchGroup.TargetAlbumName.ToLower(), track.Album.ToLower()) >= 80 &&
+                                               FuzzyHelper.ExactNumberMatch(searchGroup.TargetAlbumName, track.Album));
+
+                        if (AllowNonTaggedFiles &&
+                            string.IsNullOrWhiteSpace(track.Artist) &&
+                            string.IsNullOrWhiteSpace(track.AlbumArtist) &&
+                            string.IsNullOrWhiteSpace(track.SortArtist) &&
+                            string.IsNullOrWhiteSpace(track.SortAlbumArtist) &&
+                            string.IsNullOrWhiteSpace(track.Album) &&
+                            string.IsNullOrWhiteSpace(track.Title))
+                        {
+                            artistNameMatch = true;
+                            trackNameMatch = true;
+                            albumNameMatch = true;
+                        }
+                        
+                        if (CheckTags && (!artistNameMatch || 
+                                          !trackNameMatch ||
+                                          !albumNameMatch))
+                        {
+                            IncorrectTags++;
+                            if (CheckTagsDelete && !isInMemoryDownload)
+                            {
+                                new FileInfo(realTargetFile).Delete();
+                            }
+                            userLock.Release();
+                            fileStream.Dispose();
+                            continue;
+                        }
 
                         if (isInMemoryDownload)
                         {
-                            fileStream = new MemoryStream();
+                            using (FileStream targetStream = new FileStream(realTargetFile, FileMode.OpenOrCreate,
+                                       FileAccess.ReadWrite, FileShare.ReadWrite))
+                            {
+                                targetStream.Position = 0;
+                                fileStream.Position = 0;
+                                
+                                fileStream.CopyTo(targetStream);
+                            }
                         }
                         else
                         {
-                            if (!Directory.Exists(targetFolder))
-                            {
-                                Directory.CreateDirectory(targetFolder);
-                            }
-                            
-                            if (File.Exists(tempTargetFile))
-                            {
-                                File.Delete(tempTargetFile);
-                            }
-                            fileStream = new FileStream(tempTargetFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
-                        }
-
-                        SemaphoreSlim userLock;
-
-                        if (!_userLocks.TryGetValue(downFile.Username, out userLock))
-                        {
-                            userLock = new SemaphoreSlim(1, 1);
-                            _userLocks.TryAdd(downFile.Username, userLock);
-                        }
-                        
-                        SetThreadStatus(threadIndex, status => status.Username = downFile.Username);
-                        while (!_stopThreads)
-                        {
-                            bool locked = userLock.Wait(TimeSpan.FromSeconds(1));
-
-                            if (locked)
-                            {
-                                break;
-                            }
-                            SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Waiting, already downloading from user '{downFile.Username}'");
-                        }
-                        if (_stopThreads)
-                        {
-                            fileStream.Dispose();
-                            break;
-                        }
-                        
-                        if (!OutputStatus)
-                        {
-                            Console.WriteLine($"Downloading, '{downFile.Filename}'");
-                        }
-                        
-                        Stopwatch stopwatch = Stopwatch.StartNew();
-                        CancellationTokenSource cancellationToken = new CancellationTokenSource();
-                        SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Downloading");
-
-                        downloadTask = this.SoulClient.DownloadAsync(
-                            username: downFile.Username, 
-                            remoteFilename: downFile.Filename,
-                            async () => fileStream, 
-                            size:  downFile.Size, 
-                            cancellationToken: cancellationToken.Token,
-                            options: new TransferOptions(stateChanged: (e) => {  }, 
-                            disposeOutputStreamOnCompletion: false,
-                            progressUpdated: (e) =>
-                                {
-                                    ProgressUpdatedCallback(
-                                        e.PreviousBytesTransferred,
-                                        e.Transfer,
-                                        stopwatch,
-                                        threadIndex,
-                                        downloadIndex,
-                                        possibleDownloadResults);
-                                }
-                                ));
-
-                        cancellationToken.CancelAfter(TimeSpan.FromMinutes(5));
-                        
-                        while (!downloadTask.IsCompleted && !downloadTask.IsFaulted)
-                        {
-                            Thread.Sleep(1000);
-                            if (stopwatch.Elapsed.TotalSeconds > 30)
-                            {
-                                try
-                                {
-                                    cancellationToken.Cancel();
-                                }
-                                catch (Exception e) { }
-                                break;
-                            }
-                        }
-
-                        if (downloadTask.IsFaulted || downloadTask.Exception != null)
-                        {
-                            if (!OutputStatus)
-                            {
-                                Console.WriteLine($"Download failed for '{downFile.Filename}'");
-                            }
-                            SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Download failed");
-                            _errors.TryAdd(downloadTask.Exception.Message, 0);
-                            _errors[downloadTask.Exception.Message]++;
-                            
-                            _userErrors.TryAdd(downFile.Username, 0);
-                            _userErrors[downFile.Username]++;
-                            
-                            if (File.Exists(tempTargetFile))
-                            {
-                                File.Delete(tempTargetFile);
-                            }
-
-                            userLock.Release();
-                            fileStream.Dispose();
-                            continue;
-                        }
-
-                        if (!downloadTask.IsCompleted)
-                        {
-                            if (File.Exists(tempTargetFile))
-                            {
-                                File.Delete(tempTargetFile);
-                            }
-                            //Console.WriteLine($"Download canceled for {targetFile}");
-                            userLock.Release();
-                            fileStream.Dispose();
-                            continue;
-                        }
-
-                        fileStream.Position = 0;
-
-                        if (downloadTask.IsCompleted &&
-                            fileStream.Length == downFile.Size)
-                        {
-                            if (!Directory.Exists(targetFolder))
-                            {
-                                Directory.CreateDirectory(targetFolder);
-                            }
-
-                            AppendDownloadArchive(downloadTask.Result);
-                            
-                            if (!isInMemoryDownload)
-                            {
-                                File.Move(tempTargetFile, realTargetFile, true);
-                            }
-
-                            Track track = new Track(fileStream);
-                            bool artistNameMatch = Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), track.Artist.ToLower()) >= 80 ||
-                                                   Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), track.AlbumArtist.ToLower()) >= 80 ||
-                                                   Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), track.SortArtist.ToLower()) >= 80 ||
-                                                   Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), track.SortAlbumArtist.ToLower()) >= 80;
-                            
-                            if (!artistNameMatch)
-                            {
-                                artistNameMatch = Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), track.Album) >= 80 ||
-                                                    track.AdditionalFields.Any(field =>
-                                                        !string.IsNullOrWhiteSpace(field.Value) &&
-                                                        Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), field.Value) >= 80);
-                            }
-
-                            string? targetNameTrack = searchGroup.SongNames
-                                .Where(name => FuzzyHelper.ExactNumberMatch(name, track.Title))
-                                .Select(name => new
-                                {
-                                    Name = name, 
-                                    MatchedFor = Fuzz.PartialTokenSetRatio(name.ToLower(), track.Title.ToLower())
-                                })
-                                .OrderByDescending(match => match.MatchedFor)
-                                .FirstOrDefault()?.Name;
-                            
-                            bool trackNameMatch = !searchGroup.SongNames.Any() ||
-                                                  !string.IsNullOrWhiteSpace(targetNameTrack);
-                            
-                            if (UpdateAlbumName && 
-                                artistNameMatch &&
-                                trackNameMatch &&
-                                !string.IsNullOrWhiteSpace(searchGroup.TargetAlbumName) && 
-                                !string.IsNullOrWhiteSpace(targetNameTrack))
-                            {
-                                track.AdditionalFields.Add("OriginalAlbumName", track.Album);
-                                track.Album = searchGroup.TargetAlbumName;
-                                track.Save();
-                            }
-
-                            bool albumNameMatch = string.IsNullOrWhiteSpace(searchGroup.TargetAlbumName) || 
-                                                  (Fuzz.PartialTokenSetRatio(searchGroup.TargetAlbumName.ToLower(), track.Album.ToLower()) >= 80 &&
-                                                   FuzzyHelper.ExactNumberMatch(searchGroup.TargetAlbumName, track.Album));
-
-                            if (AllowNonTaggedFiles &&
-                                string.IsNullOrWhiteSpace(track.Artist) &&
-                                string.IsNullOrWhiteSpace(track.AlbumArtist) &&
-                                string.IsNullOrWhiteSpace(track.SortArtist) &&
-                                string.IsNullOrWhiteSpace(track.SortAlbumArtist) &&
-                                string.IsNullOrWhiteSpace(track.Album) &&
-                                string.IsNullOrWhiteSpace(track.Title))
-                            {
-                                artistNameMatch = true;
-                                trackNameMatch = true;
-                                albumNameMatch = true;
-                            }
-                            
-                            if (CheckTags && (!artistNameMatch || 
-                                              !trackNameMatch ||
-                                              !albumNameMatch))
-                            {
-                                IncorrectTags++;
-                                if (CheckTagsDelete && !isInMemoryDownload)
-                                {
-                                    new FileInfo(realTargetFile).Delete();
-                                }
-                                userLock.Release();
-                                fileStream.Dispose();
-                                continue;
-                            }
-
-                            if (isInMemoryDownload)
-                            {
-                                using (FileStream targetStream = new FileStream(realTargetFile, FileMode.OpenOrCreate,
-                                           FileAccess.ReadWrite, FileShare.ReadWrite))
-                                {
-                                    targetStream.Position = 0;
-                                    fileStream.Position = 0;
-                                    
-                                    fileStream.CopyTo(targetStream);
-                                }
-                            }
-                            else
-                            {
-                                fileStream.Flush();
-                            }
-                            fileStream.Dispose();
-
-                            _toIgnoreFiles.Add(fileName);
-
-                            if (!OutputStatus)
-                            {
-                                Console.WriteLine($"Downloaded '{realTargetFile}'");
-                            }
-
-                            if (_cachedNicotineFiles != null)
-                            {
-                                _cachedNicotineFiles.Add(new FileInfo(realTargetFile));
-                            }
-
-                            if (DownloadSingles)
-                            {
-                                userLock.Release();
-                                break; //for downloading single songs
-                            }
+                            fileStream.Flush();
                         }
                         fileStream.Dispose();
-                    }
-                    catch (Exception e)
-                    {
-                        //Console.WriteLine($"Error trying to download {e.Message}, trying next download");
-                        SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Error, {e.StackTrace}");
 
-                        if (!string.IsNullOrWhiteSpace(e.Message))
+                        _toIgnoreFiles.Add(fileName);
+
+                        if (!OutputStatus)
                         {
-                            _errors.TryAdd(e.Message, 0);
-                            _errors[e.Message]++;
+                            Console.WriteLine($"Downloaded '{realTargetFile}'");
+                        }
+
+                        if (_cachedNicotineFiles != null)
+                        {
+                            _cachedNicotineFiles.Add(new FileInfo(realTargetFile));
+                        }
+
+                        if (DownloadSingles)
+                        {
+                            userLock.Release();
+                            break; //for downloading single songs
                         }
                     }
+                    fileStream.Dispose();
                 }
-            }
-            catch (Exception e)
-            {
-                SetThreadStatus(threadIndex, status => status.ThreadStatus = $"Error, {e.StackTrace}");
-                if (!string.IsNullOrWhiteSpace(e.Message))
+                catch (Exception e)
                 {
-                    _errors.TryAdd(e.Message, 0);
-                    _errors[e.Message]++;
+                    //Console.WriteLine($"Error trying to download {e.Message}, trying next download");
+                    SetThreadStatus(downloadProgress, status => status.ThreadStatus = $"Error, {e.StackTrace}");
+
+                    if (!string.IsNullOrWhiteSpace(e.Message))
+                    {
+                        _errors.TryAdd(e.Message, 0);
+                        _errors[e.Message]++;
+                    }
                 }
             }
         }
+        catch (Exception e)
+        {
+            SetThreadStatus(downloadProgress, status => status.ThreadStatus = $"Error, {e.StackTrace}");
+            if (!string.IsNullOrWhiteSpace(e.Message))
+            {
+                _errors.TryAdd(e.Message, 0);
+                _errors[e.Message]++;
+            }
+        }
+
+        _threadDownloadProgress.TryRemove(downloadProgress.DownloadId, out DownloadProgress p);
+        _downloadThreads.TryRemove(downloadProgress.DownloadId, out Thread t);
     }
 
     private void ProgressUpdatedCallback(
-        long previousBytesTransferred, 
+        DownloadProgress downloadProgress, 
         Transfer transfer, 
         Stopwatch stopwatch, 
         int threadIndex, 
         int downloadIndex,
         List<SearchResult> possibleDownloadResults)
     {
-        SetThreadStatus(threadIndex, status => status.AverageDownloadSpeed = transfer.AverageSpeed);
-        SetThreadStatus(threadIndex, status => status.Username = transfer.Username);
+        SetThreadStatus(downloadProgress, status => status.AverageDownloadSpeed = transfer.AverageSpeed);
+        SetThreadStatus(downloadProgress, status => status.Username = transfer.Username);
         
         int roundedProgress = (int)Math.Round(transfer.PercentComplete);
-        if (!_lastProgressReport.ContainsKey(transfer.Filename))
-        {
-            _lastProgressReport[transfer.Filename] = new DownloadProgress(transfer.Filename, roundedProgress);
-        }
+        
+        downloadProgress.ThreadIndex = threadIndex;
+        downloadProgress.ThreadDownloads = possibleDownloadResults.Count;
+        downloadProgress.ThreadDownloadsIndex = downloadIndex;
+        downloadProgress.AverageDownloadSpeed = transfer.AverageSpeed;
                                 
-        _lastProgressReport[transfer.Filename].ThreadIndex = threadIndex;
-        _lastProgressReport[transfer.Filename].ThreadDownloads = possibleDownloadResults.Count;
-        _lastProgressReport[transfer.Filename].ThreadDownloadsIndex = downloadIndex;
-        _lastProgressReport[transfer.Filename].AverageDownloadSpeed = transfer.AverageSpeed;
-                                
-        if (_lastProgressReport[transfer.Filename].Progress != roundedProgress)
+        if (downloadProgress.Progress != roundedProgress)
         {
             stopwatch.Reset();
-            _lastProgressReport[transfer.Filename].Progress = roundedProgress;
-            _lastProgressReport[transfer.Filename].LastUpdatedAt = DateTime.Now;
+            downloadProgress.Progress = roundedProgress;
+            downloadProgress.LastUpdatedAt = DateTime.Now;
         }
     }
 
@@ -573,6 +558,21 @@ public class DownloadService
     public void EnqueueDownload(SearchGroup searchGroup)
     {
         _searchGroups.Enqueue(searchGroup);
+
+        while (_downloadThreads.Count >= ThreadCount)
+        {
+            Thread.Sleep(TimeSpan.FromSeconds(1));
+        }
+        
+        var downloadProgress = new DownloadProgress()
+                               {
+                                   ThreadIndex = _downloadThreads.Count
+                               };
+        
+        _threadDownloadProgress.TryAdd(downloadProgress.DownloadId, downloadProgress);
+        Thread thread = new Thread(new ParameterizedThreadStart(DownloadThread));
+        thread.Start(downloadProgress);
+        _downloadThreads.TryAdd(downloadProgress.DownloadId, thread);
     }
     
     void ProgressThread()
@@ -595,13 +595,13 @@ public class DownloadService
             List<DownloadProgress> downloads;
             int downloaded = 0;
 
-            downloads = _lastProgressReport.Values
+            downloads = _threadDownloadProgress.Values
                 .Where(progress => (DateTime.Now - progress.LastUpdatedAt).TotalSeconds <= 5)
                 .Where(progress => progress.Progress < 100)
                 .OrderBy(progress => progress.ThreadIndex)
                 .ToList();
 
-            downloaded = _lastProgressReport.Values
+            downloaded = _threadDownloadProgress.Values
                 .Count(progress => progress.Progress == 100);
             
             output.AppendLine($"Active downloads: {downloads.Count}".PadRight(totalWidth));
@@ -610,10 +610,17 @@ public class DownloadService
 
             foreach (var progress in _threadDownloadProgress)
             {
-                var downloadProgress = downloads.FirstOrDefault(d => d.ThreadIndex == progress.ThreadIndex);
-                
-                int downloadSpeed = (int)(progress.AverageDownloadSpeed / 1000);
-                output.AppendLine($"Thread {progress.ThreadIndex}: [{progress.LastUpdatedAt.ToString("HH:mm:ss")}] {progress.ThreadStatus}, {(progress.IsInMemoryDownload ? "InMemory" : "Disk")}, Speed: {downloadSpeed}KBps{DrawProgressBar(downloadProgress)}".PadRight(totalWidth));
+                var downloadProgress = downloads.FirstOrDefault(d => d.DownloadId == progress.Key);
+                if (downloadProgress != null)
+                {
+                    int downloadSpeed = (int)(progress.Value.AverageDownloadSpeed / 1000);
+                    output.AppendLine(($"Thread {progress.Value.ThreadIndex}: " +
+                                      $"[{progress.Value.LastUpdatedAt.ToString("HH:mm:ss")}] " +
+                                      $"{progress.Value.ThreadStatus}, " +
+                                      $"{(progress.Value.IsInMemoryDownload ? "InMemory" : "Disk")}, " +
+                                      $"Speed: {downloadSpeed}KBps{DrawProgressBar(downloadProgress)}")
+                        .PadRight(totalWidth));
+                }
             }
             
             foreach (var error in _errors.OrderByDescending(x => x.Value).Take(5))
