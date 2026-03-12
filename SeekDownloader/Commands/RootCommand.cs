@@ -185,7 +185,6 @@ public class RootCommand : ICommand
             {
                 downloadService.DownloadArchiveList.Add(path);
             }
-            
         }
         
         if (!string.IsNullOrWhiteSpace(MusicLibrary))
@@ -205,7 +204,8 @@ public class RootCommand : ICommand
         {
             foreach (var path in (await File.ReadAllLinesAsync(SearchFilePath))
                      .Where(line => !string.IsNullOrWhiteSpace(line))
-                     .Distinct())
+                     .Distinct()
+                     .Reverse())
             {
                 downloadService.MissingNames.Add(path);
             }
