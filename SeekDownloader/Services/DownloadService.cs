@@ -49,6 +49,7 @@ public class DownloadService
     public bool CheckTags { get; set; }
     public bool CheckTagsDelete { get; set; }
     public bool OutputStatus { get; set; }
+    public int SuccesfulDownloads {get; private set; }
     
     public bool AllowNonTaggedFiles { get; set; }
     public bool InMemoryDownloads { get; set; }
@@ -231,7 +232,6 @@ public class DownloadService
                     continue;
                 }
         
-
                 try
                 {
                     Stream fileStream;
@@ -327,6 +327,7 @@ public class DownloadService
                             break;
                         }
                     }
+                    userLock.Release();
 
                     if (downloadTask.IsFaulted || downloadTask.Exception != null)
                     {
@@ -346,7 +347,6 @@ public class DownloadService
                             File.Delete(tempTargetFile);
                         }
 
-                        userLock.Release();
                         fileStream.Dispose();
                         continue;
                     }
@@ -358,7 +358,6 @@ public class DownloadService
                             File.Delete(tempTargetFile);
                         }
                         //Console.WriteLine($"Download canceled for {targetFile}");
-                        userLock.Release();
                         fileStream.Dispose();
                         continue;
                     }
@@ -384,16 +383,12 @@ public class DownloadService
                         bool artistNameMatch = Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), track.Artist.ToLower()) >= 80 ||
                                                Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), track.AlbumArtist.ToLower()) >= 80 ||
                                                Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), track.SortArtist.ToLower()) >= 80 ||
-                                               Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), track.SortAlbumArtist.ToLower()) >= 80;
+                                               Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), track.SortAlbumArtist.ToLower()) >= 80 ||
+                                               Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), track.Album.ToLower()) >= 80 ||
+                                               track.AdditionalFields.Any(field =>
+                                                   !string.IsNullOrWhiteSpace(field.Value) &&
+                                                   Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), field.Value.ToLower()) >= 80);
                         
-                        if (!artistNameMatch)
-                        {
-                            artistNameMatch = Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), track.Album) >= 80 ||
-                                                track.AdditionalFields.Any(field =>
-                                                    !string.IsNullOrWhiteSpace(field.Value) &&
-                                                    Fuzz.PartialTokenSetRatio(searchGroup.TargetArtistName.ToLower(), field.Value) >= 80);
-                        }
-
                         string? targetNameTrack = searchGroup.SongNames
                             .Where(name => FuzzyHelper.ExactNumberMatch(name, track.Title))
                             .Select(name => new
@@ -406,10 +401,11 @@ public class DownloadService
                         
                         bool trackNameMatch = !searchGroup.SongNames.Any() ||
                                               !string.IsNullOrWhiteSpace(targetNameTrack);
-                        
+
                         if (UpdateAlbumName && 
                             artistNameMatch &&
                             trackNameMatch &&
+                            !string.Equals(track.Album.Trim(), searchGroup.TargetAlbumName.Trim(), StringComparison.OrdinalIgnoreCase) &&
                             !string.IsNullOrWhiteSpace(searchGroup.TargetAlbumName) && 
                             !string.IsNullOrWhiteSpace(targetNameTrack))
                         {
@@ -444,7 +440,6 @@ public class DownloadService
                             {
                                 new FileInfo(realTargetFile).Delete();
                             }
-                            userLock.Release();
                             fileStream.Dispose();
                             continue;
                         }
@@ -456,7 +451,6 @@ public class DownloadService
                             {
                                 targetStream.Position = 0;
                                 fileStream.Position = 0;
-                                
                                 fileStream.CopyTo(targetStream);
                             }
                         }
@@ -464,8 +458,9 @@ public class DownloadService
                         {
                             fileStream.Flush();
                         }
-                        fileStream.Dispose();
 
+                        fileStream.Dispose();
+                        SuccesfulDownloads++;
                         _toIgnoreFiles.Add(fileName);
 
                         if (!OutputStatus)
@@ -480,7 +475,6 @@ public class DownloadService
 
                         if (DownloadSingles)
                         {
-                            userLock.Release();
                             break; //for downloading single songs
                         }
                     }
@@ -521,11 +515,11 @@ public class DownloadService
         int downloadIndex,
         List<SearchResult> possibleDownloadResults)
     {
-        SetThreadStatus(downloadProgress, status => status.AverageDownloadSpeed = transfer.AverageSpeed);
-        SetThreadStatus(downloadProgress, status => status.Username = transfer.Username);
-        
         int roundedProgress = (int)Math.Round(transfer.PercentComplete);
-        
+
+        downloadProgress.AverageDownloadSpeed = transfer.AverageSpeed;
+        downloadProgress.Username = transfer.Username;
+        downloadProgress.Filename = transfer.Filename;
         downloadProgress.ThreadIndex = threadIndex;
         downloadProgress.ThreadDownloads = possibleDownloadResults.Count;
         downloadProgress.ThreadDownloadsIndex = downloadIndex;
@@ -565,9 +559,9 @@ public class DownloadService
         }
         
         var downloadProgress = new DownloadProgress()
-                               {
-                                   ThreadIndex = _downloadThreads.Count
-                               };
+        {
+            ThreadIndex = _downloadThreads.Count
+        };
         
         _threadDownloadProgress.TryAdd(downloadProgress.DownloadId, downloadProgress);
         Thread thread = new Thread(new ParameterizedThreadStart(DownloadThread));
@@ -592,35 +586,23 @@ public class DownloadService
             output.AppendLine($"Skipped already downloaded: {AlreadyDownloadedSkipCount}".PadRight(totalWidth));
             output.AppendLine($"Incorrect tagged: {IncorrectTags}".PadRight(totalWidth));
 
-            List<DownloadProgress> downloads;
-            int downloaded = 0;
-
-            downloads = _threadDownloadProgress.Values
-                .Where(progress => (DateTime.Now - progress.LastUpdatedAt).TotalSeconds <= 5)
+            List<DownloadProgress> downloads = _threadDownloadProgress.Values
                 .Where(progress => progress.Progress < 100)
                 .OrderBy(progress => progress.ThreadIndex)
                 .ToList();
-
-            downloaded = _threadDownloadProgress.Values
-                .Count(progress => progress.Progress == 100);
             
             output.AppendLine($"Active downloads: {downloads.Count}".PadRight(totalWidth));
-            output.AppendLine($"Succesful downloads: {downloaded}".PadRight(totalWidth));
+            output.AppendLine($"Succesful downloads: {SuccesfulDownloads}".PadRight(totalWidth));
 
-
-            foreach (var progress in _threadDownloadProgress)
+            foreach (var progress in downloads)
             {
-                var downloadProgress = downloads.FirstOrDefault(d => d.DownloadId == progress.Key);
-                if (downloadProgress != null)
-                {
-                    int downloadSpeed = (int)(progress.Value.AverageDownloadSpeed / 1000);
-                    output.AppendLine(($"Thread {progress.Value.ThreadIndex}: " +
-                                      $"[{progress.Value.LastUpdatedAt.ToString("HH:mm:ss")}] " +
-                                      $"{progress.Value.ThreadStatus}, " +
-                                      $"{(progress.Value.IsInMemoryDownload ? "InMemory" : "Disk")}, " +
-                                      $"Speed: {downloadSpeed}KBps{DrawProgressBar(downloadProgress)}")
-                        .PadRight(totalWidth));
-                }
+                int downloadSpeed = (int)(progress.AverageDownloadSpeed / 1000);
+                output.AppendLine(($"Thread {progress.ThreadIndex}: " +
+                                  $"[{progress.LastUpdatedAt.ToString("HH:mm:ss")}] " +
+                                  $"{progress.ThreadStatus}, " +
+                                  $"{(progress.IsInMemoryDownload ? "InMemory" : "Disk")}, " +
+                                  $"Speed: {downloadSpeed}KBps{DrawProgressBar(progress)}")
+                    .PadRight(totalWidth));
             }
             
             foreach (var error in _errors.OrderByDescending(x => x.Value).Take(5))
