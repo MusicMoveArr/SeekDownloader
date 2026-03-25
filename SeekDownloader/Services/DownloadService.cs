@@ -342,23 +342,24 @@ public class DownloadService
                         _userErrors.TryAdd(downFile.Username, 0);
                         _userErrors[downFile.Username]++;
                         
+                        fileStream.Dispose();
+                        
                         if (File.Exists(tempTargetFile))
                         {
                             File.Delete(tempTargetFile);
                         }
-
-                        fileStream.Dispose();
                         continue;
                     }
 
                     if (!downloadTask.IsCompleted)
                     {
+                        fileStream.Dispose();
+                        
                         if (File.Exists(tempTargetFile))
                         {
                             File.Delete(tempTargetFile);
                         }
                         //Console.WriteLine($"Download canceled for {targetFile}");
-                        fileStream.Dispose();
                         continue;
                     }
 
@@ -436,11 +437,11 @@ public class DownloadService
                                           !albumNameMatch))
                         {
                             IncorrectTags++;
+                            fileStream.Dispose();
                             if (CheckTagsDelete && !isInMemoryDownload)
                             {
                                 new FileInfo(realTargetFile).Delete();
                             }
-                            fileStream.Dispose();
                             continue;
                         }
 
@@ -489,6 +490,11 @@ public class DownloadService
                     {
                         _errors.TryAdd(e.Message, 0);
                         _errors[e.Message]++;
+                    }
+                    
+                    if (File.Exists(tempTargetFile))
+                    {
+                        File.Delete(tempTargetFile);
                     }
                 }
             }
