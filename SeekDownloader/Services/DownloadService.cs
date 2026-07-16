@@ -40,6 +40,7 @@ public class DownloadService
     private ConcurrentBag<string> _toIgnoreFiles = new ConcurrentBag<string>();
     private ConcurrentDictionary<Guid, Thread> _downloadThreads = new ConcurrentDictionary<Guid, Thread>();
     private Thread? _progressThread;
+    private Thread? _cleanerThread;
     private bool _stopThreads = false;
     private ConcurrentBag<FileInfo> _cachedNicotineFiles = new ConcurrentBag<FileInfo>();
     
@@ -96,6 +97,12 @@ public class DownloadService
             _progressThread = new Thread(new ThreadStart(ProgressThread));
             _progressThread.Start();
         }
+    }
+
+    public void StartCleanerThread()
+    {
+        _cleanerThread = new Thread(new ThreadStart(CleanerThread));
+        _cleanerThread.Start();
     }
 
     public void StopThreads()
@@ -574,7 +581,37 @@ public class DownloadService
         thread.Start(downloadProgress);
         _downloadThreads.TryAdd(downloadProgress.DownloadId, thread);
     }
-    
+
+    void CleanerThread()
+    {
+        while (!_stopThreads)
+        {
+            try
+            {
+                var files = new DirectoryInfo(DownloadFolderNicotine)
+                    .GetFiles("*.*", SearchOption.AllDirectories)
+                    .Where(file => file.Name.EndsWith(".bak"))
+                    .Where(file => DateTime.Now - file.LastWriteTime > TimeSpan.FromSeconds(5))
+                    .ToList();
+                
+                foreach (var file in files)
+                {
+                    try
+                    {
+                        file.Delete();
+                    }
+                    catch (Exception e) { }
+                }
+            }
+            catch (Exception e)
+            {
+                
+            }
+            
+            Thread.Sleep(TimeSpan.FromMinutes(5));
+        }
+    }
+
     void ProgressThread()
     {
         while (!_stopThreads)

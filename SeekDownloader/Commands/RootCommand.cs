@@ -231,6 +231,7 @@ public class RootCommand : ICommand
 
         await downloadService.ConnectAsync();
         downloadService.StartProgressThread();
+        downloadService.StartCleanerThread();
 
         var searchTermGroups = downloadService.MissingNames
             .Select(term => new SearchTermModel(term, SearchDelimeter))
