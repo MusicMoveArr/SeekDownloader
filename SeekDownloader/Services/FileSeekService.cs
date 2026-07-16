@@ -68,7 +68,7 @@ public class FileSeekService
                            (filterOutNames == null || filterOutNames?.Any(name => file.Filename.ToLower().Contains(name.ToLower())) == false) &&
                            file.Size < (maxFileSize * 1024 * 1024) &&
                            !AlreadyInLibrary(firstSearchTerm.ArtistName, file.Filename, musicLibraryMatch, searchFileExtensions);
-                }, fileLimit: int.MaxValue, responseLimit: int.MaxValue);
+                });
             
             List<SearchResponse> responses = await CacheSearchResultsAsync(firstSearchTerm.ArtistName, searchOptions, client);
             
