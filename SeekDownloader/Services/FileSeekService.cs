@@ -44,6 +44,11 @@ public class FileSeekService
         int searchMatchAlbumPercentage,
         int searchMatchTrackPercentage)
     {
+        if (!searchTerms.Any())
+        {
+            return [];
+        }
+        
         LastErrorMessage = string.Empty;
         try
         {
@@ -77,6 +82,7 @@ public class FileSeekService
                             Size = f.Size,
                             HasFreeUploadSlot = x.HasFreeUploadSlot,
                             UploadSpeed = x.UploadSpeed,
+                            Trackname = GetSeekTrackName(f.Filename),
                             PotentialArtistMatch = Fuzz.PartialRatio(f.Filename.ToLower(), firstSearchTerm.ArtistName.ToLower()),
                             PotentialAlbumMatch = string.IsNullOrWhiteSpace(firstSearchTerm.AlbumName) ? 100 : Fuzz.PartialRatio(f.Filename.ToLower(), firstSearchTerm.AlbumName.ToLower()),
                             
