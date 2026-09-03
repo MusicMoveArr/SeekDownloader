@@ -4,6 +4,8 @@ using System.Text;
 using ATL;
 using FuzzySharp;
 using SeekDownloader.Helpers;
+using SeekDownloader.Models;
+using SmartFormat;
 using Soulseek;
 using Soulseek.Diagnostics;
 using Directory = System.IO.Directory;
@@ -55,6 +57,7 @@ public class DownloadService
     public bool AllowNonTaggedFiles { get; set; }
     public bool InMemoryDownloads { get; set; }
     public int InMemoryDownloadMaxSize { get; set; }
+    public string DownloadFileFormat { get; set; }
 
     public async Task ConnectAsync()
     {
@@ -200,12 +203,26 @@ public class DownloadService
                 downloadIndex++;
 
                 var splitName = downFile.Filename.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries);
-                string fileName = splitName.Last();
                 string folderName = splitName.SkipLast(1).LastOrDefault() ?? string.Empty;
+
+                DownloadFileFormatModel fileFormatModel = new DownloadFileFormatModel
+                {
+                    SubDirectory = folderName,
+                    Filename = splitName.Last(),
+                    FullPath = downFile.Filename,
+                    Size = downFile.Size,
+                    Username = downFile.Username
+                };
                 
-                string targetFolder = Path.Combine(DownloadFolderNicotine, downFile.Username, folderName);
-                string tempTargetFile = Path.Combine(targetFolder, $"{fileName}.bak");
+                string fileFormat = Smart.Format(DownloadFileFormat, fileFormatModel);
+                FileInfo targetFileInfo = new FileInfo(Path.Combine(DownloadFolderNicotine, fileFormat));
+                string fileName = targetFileInfo.Name;
+                
+                string targetFolder = targetFileInfo.Directory.FullName;
+                string tempTargetFile = $"{targetFileInfo.FullName}.bak";
                 string realTargetFile = Path.Combine(targetFolder, fileName);
+                
+                
 
                 if (File.Exists(tempTargetFile))
                 {
@@ -219,7 +236,6 @@ public class DownloadService
                 }
                 
                 //already downloaded by user?
-                FileInfo targetFileInfo = new FileInfo(realTargetFile);
                 if (targetFileInfo.Exists && targetFileInfo.Length == downFile.Size)
                 {
                     AlreadyDownloadedSkipCount++;

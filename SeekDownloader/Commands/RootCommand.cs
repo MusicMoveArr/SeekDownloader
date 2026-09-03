@@ -20,6 +20,11 @@ public class RootCommand : ICommand
         IsRequired = true)]
     public required string DownloadFilePath { get; init; }
 
+    [CommandOption("download-file-format",
+        Description = "Download name to store the downloads.",
+        EnvironmentVariable = "SEEK_DOWNLOADFILE_FORMAT")]
+    public string DownloadFileFormat { get; set; } = "{Username}/{SubDirectory}/{Filename}";
+
     [CommandOption("soulseek-listen-port",
         Description = "Soulseek listen port (used for portforwarding).",
         EnvironmentVariable = "SEEK_SOULSEEKLISTENPORT",
@@ -193,6 +198,7 @@ public class RootCommand : ICommand
         downloadService.InMemoryDownloads = InMemoryDownloads;
         downloadService.InMemoryDownloadMaxSize = InMemoryDownloadMaxSize;
         downloadService.DownloadArchiveFilePath = DownloadArchiveFilePath;
+        downloadService.DownloadFileFormat = DownloadFileFormat;
 
         if (!string.IsNullOrWhiteSpace(downloadService.DownloadArchiveFilePath) &&
             File.Exists(downloadService.DownloadArchiveFilePath))
