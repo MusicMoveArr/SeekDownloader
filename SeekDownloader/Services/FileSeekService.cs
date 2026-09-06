@@ -35,6 +35,7 @@ public class FileSeekService
     public async Task<List<SearchResult>> SearchAsync(
         List<SearchTermModel> searchTerms, 
         SoulseekClient client,
+        SubSonicService subSonicService,
         List<string> filterOutNames,
         List<string> searchFileExtensions,
         int musicLibraryMatch,
@@ -42,7 +43,9 @@ public class FileSeekService
         ConcurrentBag<string> downloadArchiveList,
         int searchMatchArtistPercentage,
         int searchMatchAlbumPercentage,
-        int searchMatchTrackPercentage)
+        int searchMatchTrackPercentage,
+        bool remoteFolderContainArtist,
+        bool remoteFolderBeArtist)
     {
         if (!searchTerms.Any())
         {
@@ -52,8 +55,10 @@ public class FileSeekService
         LastErrorMessage = string.Empty;
         try
         {
+            
             SearchTermModel firstSearchTerm = searchTerms.First();
             AddToCache(firstSearchTerm.ArtistName);
+            subSonicService.PopulateArtistCache(firstSearchTerm.ArtistName);
             
             List<string> songNames = searchTerms
                 .Select(term => term.SongName)
@@ -63,11 +68,24 @@ public class FileSeekService
             var searchOptions = new SearchOptions(
                 fileFilter: (file) =>
                 {
+                    if (remoteFolderContainArtist || remoteFolderBeArtist)
+                    {
+                        var folders = file.Filename.Contains("/") ? file.Filename.Split("/") : file.Filename.Split("\\");
+                        folders = folders.Take(folders.Length - 1).ToArray();
+                        
+                        if (!folders.Any(dir => 
+                                remoteFolderContainArtist ? 
+                                dir.Contains(firstSearchTerm.ArtistName, StringComparison.OrdinalIgnoreCase) :
+                                dir.Equals(firstSearchTerm.ArtistName, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            return false;
+                        }
+                    }
                     
                     return searchFileExtensions.Any(ext => file.Filename.EndsWith(ext)) &&
                            (filterOutNames == null || filterOutNames?.Any(name => file.Filename.ToLower().Contains(name.ToLower())) == false) &&
                            file.Size < (maxFileSize * 1024 * 1024) &&
-                           !AlreadyInLibrary(firstSearchTerm.ArtistName, file.Filename, musicLibraryMatch, searchFileExtensions);
+                           !AlreadyInLibrary(subSonicService, firstSearchTerm.ArtistName, file.Filename, musicLibraryMatch, searchFileExtensions);
                 });
             
             List<SearchResponse> responses = await CacheSearchResultsAsync(firstSearchTerm.ArtistName, searchOptions, client);
@@ -295,17 +313,23 @@ public class FileSeekService
     }
     
     public bool AlreadyInLibrary(
+        SubSonicService subSonicService,
         string artistName, 
         string fileName, 
         int musicLibraryMatch, 
         List<string> searchFileExtensions)
     {
+        string targetFile = GetSeekTrackName(fileName);
+        if (subSonicService.IsConfigSet && 
+            !string.IsNullOrWhiteSpace(targetFile) &&
+            subSonicService.AlreadyInLibrary(artistName, string.Empty, targetFile))
+        {
+            return true;
+        }
+
         if (ArtistMusicLibraries.ContainsKey(artistName))
         {
             List<FileInfo> musicFiles = ArtistMusicLibraries[artistName];
-
-            string targetFile = GetSeekTrackName(fileName);
-
             if (string.IsNullOrWhiteSpace(targetFile))
             {
                 //ignore file that cannot be parsed

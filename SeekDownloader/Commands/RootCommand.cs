@@ -179,6 +179,16 @@ public class RootCommand : ICommand
         EnvironmentVariable = "SEEK_SUBSONIC_PASSWORD")]
     public string SubSonicPassword { get; set; } = null;
 
+    [CommandOption("remote-folder-be-artist",
+        Description = "The remote folder of the user that is sharing the file must be the seeking artist name.",
+        EnvironmentVariable = "SEEK_REMOTE_FOLDER_BE_ARTIST")]
+    public bool RemoteFolderBeArtist { get; set; }
+    
+    [CommandOption("remote-folder-contain-artist",
+        Description = "The remote folder of the user that is sharing the file must contain the seeking artist name.",
+        EnvironmentVariable = "SEEK_REMOTE_FOLDER_CONTAIN_ARTIST")]
+    public bool RemoteFolderContainArtist { get; set; }
+
     public async ValueTask ExecuteAsync(IConsole console)
     {
         FileSeekService fileSeeker = new FileSeekService();
@@ -308,6 +318,7 @@ public class RootCommand : ICommand
             var results = await fileSeeker.SearchAsync(
                 searchTerms,
                 downloadService.SoulClient,
+                downloadService.SubSonicService,
                 FilterOutFileNames,
                 SearchFileExtensions,
                 MusicLibraryMatch,
@@ -315,7 +326,9 @@ public class RootCommand : ICommand
                 downloadService.DownloadArchiveList,
                 SearchMatchArtistPercentage,
                 SearchMatchAlbumPercentage,
-                SearchMatchTrackPercentage);
+                SearchMatchTrackPercentage,
+                RemoteFolderContainArtist,
+                RemoteFolderBeArtist);
 
             if (results.Any() &&
                 !string.IsNullOrWhiteSpace(SubSonicHost))

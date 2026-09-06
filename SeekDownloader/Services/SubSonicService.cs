@@ -32,11 +32,13 @@ public class SubSonicService
         _cache = new MemoryCache(options);
     }
 
+    public bool IsConfigSet => !string.IsNullOrWhiteSpace(_hostname) &&
+                               !string.IsNullOrWhiteSpace(_username) &&
+                               !string.IsNullOrWhiteSpace(_password);
+
     public bool AlreadyInLibrary(string artist, string? album, string title)
     {
-        if (string.IsNullOrWhiteSpace(_hostname) || 
-            string.IsNullOrWhiteSpace(_username) || 
-            string.IsNullOrWhiteSpace(_password))
+        if (!IsConfigSet)
         {
             return false;
         }
@@ -69,9 +71,7 @@ public class SubSonicService
 
     public void PopulateArtistCache(string artist)
     {
-        if (string.IsNullOrWhiteSpace(_hostname) || 
-            string.IsNullOrWhiteSpace(_username) || 
-            string.IsNullOrWhiteSpace(_password))
+        if (!IsConfigSet)
         {
             return;
         }
@@ -85,11 +85,13 @@ public class SubSonicService
         using var client = new SubsonicClient(connection);
 
         string searchKey = $"search_{artist}";
-        if (!_cache.TryGetValue(searchKey, out Search3Response? artistSearchResponse))
+        if (_cache.TryGetValue(searchKey, out Search3Response? artistSearchResponse))
         {
-            artistSearchResponse = client.Search.Search3Async(artist, songCount: 0, albumCount: 0, artistCount: 10).Result;
-            _cache.Set(searchKey, artistSearchResponse, _cacheOptions);
+            return;
         }
+        
+        artistSearchResponse = client.Search.Search3Async(artist, songCount: 0, albumCount: 0, artistCount: 10).Result;
+        _cache.Set(searchKey, artistSearchResponse, _cacheOptions);
         
         foreach (var artistResult in artistSearchResponse.SearchResult.Artists
                      .Where(a => Fuzz.PartialRatio(a.Name.ToLower(), artist.ToLower()) >= MatchPercentage)
