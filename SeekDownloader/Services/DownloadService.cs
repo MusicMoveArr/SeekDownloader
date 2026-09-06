@@ -17,6 +17,7 @@ public class DownloadService
 {
     private const long MinAvailableDiskSpace = 20000; //MB
     
+    public SubSonicService SubSonicService { get; set; }
     public string? SoulSeekUsername { get; set; }
     public string? SoulSeekPassword { get; set; }
     public int NicotineListenPort { get; set; }
@@ -454,6 +455,19 @@ public class DownloadService
                             trackNameMatch = true;
                             albumNameMatch = true;
                         }
+                        
+                        SubSonicService.PopulateArtistCache(track.Artist);
+                        if (SubSonicService.AlreadyInLibrary(track.Artist, track.Album, track.Title))
+                        {
+                            AlreadyDownloadedSkipCount++;
+                            fileStream.Dispose();
+                            if (CheckTagsDelete && !isInMemoryDownload)
+                            {
+                                new FileInfo(realTargetFile).Delete();
+                            }
+                            continue;
+                        }
+                        
                         
                         if (CheckTags && (!artistNameMatch || 
                                           !trackNameMatch ||

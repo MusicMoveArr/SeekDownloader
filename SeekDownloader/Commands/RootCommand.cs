@@ -183,7 +183,7 @@ public class RootCommand : ICommand
     {
         FileSeekService fileSeeker = new FileSeekService();
         DownloadService downloadService = new DownloadService();
-        SubSonicService subSonicService = new SubSonicService(SubSonicHost, SubSonicUsername, SubSonicPassword);
+        downloadService.SubSonicService = new SubSonicService(SubSonicHost, SubSonicUsername, SubSonicPassword);
         downloadService.SoulSeekUsername = SoulseekUsername;
         downloadService.SoulSeekPassword = SoulseekPassword;
         downloadService.ThreadCount = ThreadCount;
@@ -267,8 +267,8 @@ public class RootCommand : ICommand
 
                 foreach (var term in terms)
                 {
-                    subSonicService.PopulateArtistCache(termsKey.ArtistName);
-                    if (subSonicService.AlreadyInLibrary(termsKey.ArtistName, term.AlbumName, term.SongName))
+                    downloadService.SubSonicService.PopulateArtistCache(termsKey.ArtistName);
+                    if (downloadService.SubSonicService.AlreadyInLibrary(termsKey.ArtistName, term.AlbumName, term.SongName))
                     {
                         downloadService.AlreadyDownloadedSkipCount++;
                         continue;
@@ -289,8 +289,8 @@ public class RootCommand : ICommand
             {
                 foreach (var term in terms.Where(t => !string.IsNullOrWhiteSpace(t.SongName)))
                 {
-                    subSonicService.PopulateArtistCache(termsKey.ArtistName);
-                    if (subSonicService.AlreadyInLibrary(termsKey.ArtistName, term.AlbumName, term.SongName!))
+                    downloadService.SubSonicService.PopulateArtistCache(termsKey.ArtistName);
+                    if (downloadService.SubSonicService.AlreadyInLibrary(termsKey.ArtistName, term.AlbumName, term.SongName!))
                     {
                         downloadService.AlreadyDownloadedSkipCount++;
                     }
@@ -324,8 +324,8 @@ public class RootCommand : ICommand
 
                 foreach(var result in results.Where(t => !string.IsNullOrWhiteSpace(t.Trackname)))
                 {
-                    subSonicService.PopulateArtistCache(termsKey.ArtistName);
-                    if (!subSonicService.AlreadyInLibrary(termsKey.ArtistName, termsKey.AlbumName, result.Trackname))
+                    downloadService.SubSonicService.PopulateArtistCache(termsKey.ArtistName);
+                    if (!downloadService.SubSonicService.AlreadyInLibrary(termsKey.ArtistName, termsKey.AlbumName, result.Trackname))
                     {
                         tempResults.Add(result);
                     }
